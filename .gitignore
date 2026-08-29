@@ -1,0 +1,13 @@
+build/
+build-host/
+simulator/out/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+.vscode/
+device-backups/
+*.bin
+*.elf
+*.map
+*.uf2

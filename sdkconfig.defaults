@@ -1,0 +1,54 @@
+# --- 目标芯片 ---
+CONFIG_IDF_TARGET="esp32c3"
+# 注:ESP32-C3 无 PSRAM,故不设 CONFIG_SPIRAM。
+
+# --- Flash ---
+# 取 4MB:镜像头里的 flash 大小若【大于】芯片实际容量,启动时 esp_flash_init_default_chip
+# 探测失败会 assert 进而无限重启;反之(头 ≤ 实际)正常。开源硬件用户手上可能是 4MB 或
+# 8MB 批次,取 4MB 则同一份产物两种板子都能启动。
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+# 烧录时按实际探测容量回写镜像头,进一步保证兼容。
+CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
+
+# --- Partition table ---
+# Fixed 2MB factory slot fits the multiplayer/LVGL image while preserving one
+# binary for both known 4MB and 8MB hardware batches. No OTA slot is allocated.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- 控制台:USB-Serial-JTAG(C3 原生 USB,GPIO18/19)---
+# 不用 UART0:其默认 TX=GPIO21 与本板背光引脚冲突。
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# --- LVGL ---
+CONFIG_LV_COLOR_DEPTH_16=y
+# Product image has no LVGL examples or demo screens.
+# CONFIG_LV_BUILD_EXAMPLES is not set
+# CONFIG_LV_BUILD_DEMOS is not set
+# LVGL still requires one framework default; product labels set Kode Mono
+# explicitly. Keep only Montserrat 14 as a fallback for internal/error objects.
+CONFIG_LV_FONT_MONTSERRAT_14=y
+# LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
+# 狼人杀 FUI 的对象树和首帧临时 draw task 会超过 24KB。48KB 与同一
+# 硬件上 gesture-wand FUI 的已验证基线一致，启动时再输出实机峰值和余量。
+CONFIG_LV_MEM_SIZE_KILOBYTES=48
+# ESP32-C3 单核软件渲染只使用矩形、方头线段与位图；禁用圆角/阴影遮罩路径。
+# CONFIG_LV_DRAW_SW_COMPLEX is not set
+
+# --- ESP-NOW multiplayer transport ---
+# Game traffic uses ESP-NOW encrypted unicast. Broadcast is limited to discovery
+# and the pre-LMK commit/reveal handshake.
+# The exact game uses seven devices (one host + six clients); eight slots leave
+# controlled headroom without changing the product's fixed player count.
+CONFIG_ESP_WIFI_ESPNOW_MAX_ENCRYPT_NUM=8
+
+# --- 系统 ---
+CONFIG_FREERTOS_HZ=1000
+# UI construction still runs from app_main. Match the LVGL port task's
+# 7168-byte stack so object creation and font setup cannot exhaust the smaller
+# ESP-IDF main-task default; actual drawing stays on the LVGL task.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=7168
+# MINIMAL_BUILD intentionally omits the espcoredump component, so private
+# role/action RAM cannot be persisted by the firmware. If that component is
+# ever added as a dependency, its storage backend must remain disabled.

@@ -1,0 +1,20 @@
+menu "AI-PASSPORT Werewolf identity"
+
+config WEREWOLF_FACTORY_NICKNAME
+    string "One-time factory nickname seed"
+    default ""
+    help
+        Optional nickname written to the Werewolf identity NVS record only when
+        no valid record exists (or when the revision below is newer). Leave
+        empty in normal shared firmware. Nicknames are printable ASCII, at most
+        ten characters, with no leading or trailing spaces.
+
+config WEREWOLF_FACTORY_PROFILE_REVISION
+    int "Factory nickname seed revision"
+    range 1 2147483647
+    default 1
+    help
+        Increase this only when intentionally replacing an already provisioned
+        nickname with a new non-empty factory seed.
+
+endmenu
