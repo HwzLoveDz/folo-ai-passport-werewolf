@@ -9,43 +9,48 @@ LV_FONT_DECLARE(ui_font_kode_bold_13);
 LV_FONT_DECLARE(ui_font_kode_bold_15);
 LV_FONT_DECLARE(ui_font_kode_bold_21);
 
-/* Werewolf owns this visual language. The upstream/demo firmware is consulted
- * only for the display/button BSP; no upstream UI primitive, asset or screen
- * state enters this module. Tokens follow the accepted MOTE FUI family while
- * keeping names semantic to the game. */
-#define WW_UI_BG          0x04070BU
-#define WW_UI_PANEL       0x0C1117U
-#define WW_UI_PANEL_ALT   0x171216U
-#define WW_UI_FOCUS       0xFF6A1AU
-#define WW_UI_STRUCTURE   0x762311U
-#define WW_UI_TEXT        0xF1E8D2U
-#define WW_UI_SUCCESS     0x7AD8D1U
-#define WW_UI_WARNING     0xFF9B35U
-#define WW_UI_ERROR       0xFF4D6DU
-#define WW_UI_MUTED       0x829097U
-#define WW_UI_ERROR_PANEL 0x241014U
+/* ECLIPSE LEDGER / 月蚀村志. Werewolf owns this visual language. The
+ * upstream/demo firmware remains a BSP reference only; no upstream UI asset,
+ * primitive or screen state enters this module. A cropped eclipse is the one
+ * atmospheric motif, while every color and mark below carries game state. */
+#define WW_UI_BG          0x09090BU
+#define WW_UI_PANEL       0x101217U
+#define WW_UI_PANEL_WARM  0x17110FU
+#define WW_UI_PANEL_ALT   0x1A1412U
+#define WW_UI_FOCUS       0xD0A154U
+#define WW_UI_FOCUS_TEXT  0x09090BU
+#define WW_UI_STRUCTURE   0x3A2A25U
+#define WW_UI_TEXT        0xE8DEC8U
+#define WW_UI_SUCCESS     0x86A68CU
+#define WW_UI_WARNING     0xB77735U
+#define WW_UI_ERROR       0xA83F3BU
+#define WW_UI_MUTED       0x817B75U
+#define WW_UI_ERROR_PANEL 0x241315U
+#define WW_UI_MOON_DIM    0x2A2525U
 
 #define CELL_COUNT WEREWOLF_UI_PLAYER_COUNT
 #define HEADER_RIGHT 232
-#define BATTERY_SEGMENT_SIZE 9
+#define BATTERY_SEGMENT_WIDTH 8
+#define BATTERY_SEGMENT_HEIGHT 5
 #define BATTERY_SEGMENT_GAP 3
 #define HEADER_BATTERY_WIDTH                                              \
-    ((int)WEREWOLF_UI_BATTERY_SEGMENTS * BATTERY_SEGMENT_SIZE +          \
+    ((int)WEREWOLF_UI_BATTERY_SEGMENTS * BATTERY_SEGMENT_WIDTH +         \
      ((int)WEREWOLF_UI_BATTERY_SEGMENTS - 1) * BATTERY_SEGMENT_GAP)
 #define HEADER_LINK_X 8
-#define HEADER_LINK_Y 22
-#define HEADER_SIGNAL_X 29
-#define HEADER_SIGNAL_Y 24
-#define HEADER_SIGNAL_SIZE 7
+#define HEADER_LINK_Y 25
+#define HEADER_SIGNAL_X 30
+#define HEADER_SIGNAL_BASE_Y 36
+#define HEADER_SIGNAL_SIZE 4
 #define HEADER_SIGNAL_GAP 3
 #define HEADER_SIGNAL_WIDTH                                               \
     ((int)WEREWOLF_UI_SIGNAL_SEGMENTS * HEADER_SIGNAL_SIZE +             \
      ((int)WEREWOLF_UI_SIGNAL_SEGMENTS - 1) * HEADER_SIGNAL_GAP)
-#define HEADER_PLAYER_Y 22
-#define HEADER_PLAYER_SIZE 11
+#define HEADER_PLAYER_Y 24
+#define HEADER_PLAYER_WIDTH_UNIT 10
+#define HEADER_PLAYER_HEIGHT 12
 #define HEADER_PLAYER_GAP 3
 #define HEADER_PLAYER_WIDTH                                               \
-    ((int)CELL_COUNT * HEADER_PLAYER_SIZE +                               \
+    ((int)CELL_COUNT * HEADER_PLAYER_WIDTH_UNIT +                         \
      ((int)CELL_COUNT - 1) * HEADER_PLAYER_GAP)
 #define HEADER_PLAYER_START_X (HEADER_RIGHT - HEADER_PLAYER_WIDTH)
 
@@ -59,6 +64,9 @@ _Static_assert(HEADER_SIGNAL_X + HEADER_SIGNAL_WIDTH < HEADER_PLAYER_START_X,
 
 static lv_obj_t *s_screen;
 static lv_obj_t *s_panel;
+static lv_obj_t *s_moon_disc;
+static lv_obj_t *s_moon_cutout;
+static lv_obj_t *s_moon_horizon;
 static lv_obj_t *s_title;
 static lv_obj_t *s_subtitle;
 static lv_obj_t *s_detail;
@@ -129,9 +137,9 @@ static const char *faction_name(werewolf_ui_faction_t faction)
 {
     switch (faction) {
     case WEREWOLF_UI_FACTION_GOOD:
-        return "FACTION: GOOD";
+        return "FACTION  GOOD";
     case WEREWOLF_UI_FACTION_WOLVES:
-        return "FACTION: WOLF";
+        return "FACTION  WOLF";
     default:
         return "RESULT UNAVAILABLE";
     }
@@ -151,7 +159,7 @@ static const char *error_name(werewolf_ui_error_t error)
     case WEREWOLF_UI_ERROR_HARDWARE:
         return "HARDWARE FAILURE";
     case WEREWOLF_UI_ERROR_HOST_LOST:
-        return "HOST LOST // GAME ABORTED";
+        return "HOST LOST  GAME ABORTED";
     default:
         return "UNKNOWN ERROR";
     }
@@ -237,64 +245,69 @@ static lv_obj_t *screen_create(void)
     lv_obj_set_style_border_width(screen, 0, 0);
     lv_obj_set_style_bg_color(screen, lv_color_hex(WW_UI_BG), 0);
 
-    box(screen, 0, 0, 240, 44, WW_UI_PANEL, LV_OPA_COVER);
-    box(screen, 0, 41, 52, 2, WW_UI_FOCUS, LV_OPA_COVER);
-    box(screen, 56, 41, 176, 2, WW_UI_TEXT, LV_OPA_80);
-    box(screen, 0, 43, 156, 1, WW_UI_STRUCTURE, LV_OPA_70);
+    box(screen, 0, 0, 240, 44, WW_UI_BG, LV_OPA_COVER);
+    box(screen, 8, 42, 224, 1, WW_UI_STRUCTURE, LV_OPA_80);
 
     s_header_phase = label_create(screen, "MODE SELECT",
                                   &ui_font_kode_bold_15, WW_UI_TEXT);
-    lv_obj_set_pos(s_header_phase, 8, 3);
+    lv_obj_set_pos(s_header_phase, 8, 4);
     lv_obj_set_size(s_header_phase, 158, 18);
-    lv_obj_set_style_text_letter_space(s_header_phase, 1, 0);
+    lv_obj_set_style_text_letter_space(s_header_phase, 0, 0);
 
     lv_obj_t *link_group = box(screen, HEADER_LINK_X, HEADER_LINK_Y,
-                               16, 11, WW_UI_BG, LV_OPA_TRANSP);
+                               17, 11, WW_UI_BG, LV_OPA_TRANSP);
     s_header_link_nodes[0] = box(link_group, 0, 3, 5, 5,
                                  WW_UI_STRUCTURE, LV_OPA_50);
-    s_header_link_nodes[1] = box(link_group, 11, 3, 5, 5,
+    s_header_link_nodes[1] = box(link_group, 12, 3, 5, 5,
                                  WW_UI_STRUCTURE, LV_OPA_50);
+    lv_obj_set_style_radius(s_header_link_nodes[0], LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_radius(s_header_link_nodes[1], LV_RADIUS_CIRCLE, 0);
     for (unsigned i = 0U; i < 3U; ++i) {
-        s_header_link_bridges[i] = box(link_group, 4 + (int)i * 2, 4,
-                                       2, 3, WW_UI_STRUCTURE, LV_OPA_20);
+        s_header_link_bridges[i] = box(link_group, 5 + (int)i * 2, 5,
+                                       3, 1, WW_UI_STRUCTURE, LV_OPA_20);
     }
 
     for (unsigned i = 0U; i < WEREWOLF_UI_SIGNAL_SEGMENTS; ++i) {
+        int height = 3 + (int)i * 2;
         s_header_signal_segments[i] = box(
             screen,
             HEADER_SIGNAL_X +
                 (int)i * (HEADER_SIGNAL_SIZE + HEADER_SIGNAL_GAP),
-            HEADER_SIGNAL_Y, HEADER_SIGNAL_SIZE, HEADER_SIGNAL_SIZE,
+            HEADER_SIGNAL_BASE_Y - height, HEADER_SIGNAL_SIZE, height,
             WW_UI_STRUCTURE, LV_OPA_20);
+        lv_obj_set_style_radius(s_header_signal_segments[i], 2, 0);
     }
 
     for (unsigned i = 0U; i < CELL_COUNT; ++i) {
         int x = HEADER_PLAYER_START_X +
-                (int)i * (HEADER_PLAYER_SIZE + HEADER_PLAYER_GAP);
+                (int)i * (HEADER_PLAYER_WIDTH_UNIT + HEADER_PLAYER_GAP);
         lv_obj_t *slot = box(screen, x, HEADER_PLAYER_Y,
-                             HEADER_PLAYER_SIZE, HEADER_PLAYER_SIZE,
+                             HEADER_PLAYER_WIDTH_UNIT, HEADER_PLAYER_HEIGHT,
                              WW_UI_STRUCTURE, LV_OPA_20);
+        lv_obj_set_style_radius(slot, 4, 0);
         lv_obj_set_style_border_width(slot, 1, 0);
         lv_obj_set_style_border_color(slot, lv_color_hex(WW_UI_STRUCTURE), 0);
         lv_obj_set_style_border_opa(slot, LV_OPA_70, 0);
         s_header_player_slots[i] = slot;
-        s_header_player_fills[i] = box(slot, 2, 2, 7, 7,
+        s_header_player_fills[i] = box(slot, 2, 2, 6, 8,
                                        WW_UI_SUCCESS, LV_OPA_TRANSP);
-        s_header_player_cuts[i] = box(slot, 2, 5, 7, 2,
-                                      WW_UI_PANEL, LV_OPA_TRANSP);
+        lv_obj_set_style_radius(s_header_player_fills[i], 2, 0);
+        s_header_player_cuts[i] = box(slot, 2, 5, 6, 2,
+                                      WW_UI_BG, LV_OPA_TRANSP);
     }
 
     lv_obj_t *battery_group = box(screen,
                                   HEADER_RIGHT - HEADER_BATTERY_WIDTH, 5,
                                   HEADER_BATTERY_WIDTH,
-                                  BATTERY_SEGMENT_SIZE,
+                                  BATTERY_SEGMENT_HEIGHT,
                                   WW_UI_BG, LV_OPA_TRANSP);
     for (unsigned i = 0; i < WEREWOLF_UI_BATTERY_SEGMENTS; ++i) {
         s_header_battery_segments[i] = box(
             battery_group,
-            (int)i * (BATTERY_SEGMENT_SIZE + BATTERY_SEGMENT_GAP), 0,
-            BATTERY_SEGMENT_SIZE, BATTERY_SEGMENT_SIZE,
+            (int)i * (BATTERY_SEGMENT_WIDTH + BATTERY_SEGMENT_GAP), 0,
+            BATTERY_SEGMENT_WIDTH, BATTERY_SEGMENT_HEIGHT,
             WW_UI_MUTED, LV_OPA_40);
+        lv_obj_set_style_radius(s_header_battery_segments[i], 2, 0);
     }
     return screen;
 }
@@ -429,7 +442,7 @@ static void update_header_players(void)
         uint32_t fill_color = WW_UI_STRUCTURE;
         lv_opa_t fill_opacity = LV_OPA_TRANSP;
         int fill_y = 2;
-        int fill_height = 7;
+        int fill_height = 8;
         bool cut = false;
 
         header_box_style(s_header_player_slots[i], WW_UI_STRUCTURE,
@@ -440,8 +453,8 @@ static void update_header_players(void)
         case WEREWOLF_UI_PLAYER_INDICATOR_JOINED:
             fill_color = WW_UI_WARNING;
             fill_opacity = LV_OPA_COVER;
-            fill_y = 6;
-            fill_height = 3;
+            fill_y = 8;
+            fill_height = 2;
             break;
         case WEREWOLF_UI_PLAYER_INDICATOR_READY:
         case WEREWOLF_UI_PLAYER_INDICATOR_ALIVE:
@@ -458,9 +471,9 @@ static void update_header_players(void)
             break;
         }
         lv_obj_set_pos(s_header_player_fills[i], 2, fill_y);
-        lv_obj_set_size(s_header_player_fills[i], 7, fill_height);
+        lv_obj_set_size(s_header_player_fills[i], 6, fill_height);
         header_box_style(s_header_player_fills[i], fill_color, fill_opacity);
-        header_box_style(s_header_player_cuts[i], WW_UI_PANEL,
+        header_box_style(s_header_player_cuts[i], WW_UI_BG,
                          cut ? LV_OPA_COVER : LV_OPA_TRANSP);
 
         bool local = s_model.local_seat < WEREWOLF_UI_PLAYER_COUNT &&
@@ -535,11 +548,14 @@ static lv_obj_t *cell_create(lv_obj_t *parent)
     lv_obj_t *cell = lv_obj_create(parent);
     lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(cell, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_radius(cell, 0, 0);
+    lv_obj_set_style_radius(cell, 4, 0);
     lv_obj_set_style_border_width(cell, 1, 0);
     lv_obj_set_style_border_color(cell, lv_color_hex(WW_UI_STRUCTURE), 0);
+    lv_obj_set_style_border_opa(cell, LV_OPA_70, 0);
+    lv_obj_set_style_border_side(cell, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_pad_all(cell, 0, 0);
     lv_obj_set_style_bg_color(cell, lv_color_hex(WW_UI_PANEL_ALT), 0);
+    lv_obj_set_style_bg_opa(cell, LV_OPA_50, 0);
     return cell;
 }
 
@@ -571,7 +587,8 @@ static void cell_place(unsigned index, int x, int y, int w, int h,
     uint32_t bg = WW_UI_PANEL_ALT;
     uint32_t fg = WW_UI_TEXT;
     uint32_t border = WW_UI_STRUCTURE;
-    uint32_t bar = WW_UI_STRUCTURE;
+    uint32_t bar = WW_UI_TEXT;
+    lv_opa_t bg_opacity = LV_OPA_50;
 
     /* Private and public pages deliberately share the same geometry and
      * luminance. Only semantic state colors change. */
@@ -586,22 +603,32 @@ static void cell_place(unsigned index, int x, int y, int w, int h,
     if (!enabled) {
         bg = WW_UI_BG;
         fg = WW_UI_MUTED;
-        bar = WW_UI_MUTED;
+        bg_opacity = LV_OPA_TRANSP;
     } else if (selected) {
+        bg = WW_UI_FOCUS;
+        fg = WW_UI_FOCUS_TEXT;
         border = WW_UI_FOCUS;
-        bar = WW_UI_FOCUS;
+        bg_opacity = LV_OPA_COVER;
     }
 
     show_obj(cell);
     lv_obj_set_pos(cell, x, y);
     lv_obj_set_size(cell, w, h);
+    lv_obj_set_style_radius(cell, h >= 36 ? 6 : 3, 0);
     lv_obj_set_style_bg_color(cell, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_opa(cell, bg_opacity, 0);
+    lv_obj_set_style_border_width(cell, 1, 0);
     lv_obj_set_style_border_color(cell, lv_color_hex(border), 0);
-    lv_obj_set_pos(s_cell_bars[index], 0, 0);
-    lv_obj_set_size(s_cell_bars[index], 4, h);
+    lv_obj_set_style_border_opa(cell,
+                                selected ? LV_OPA_COVER : LV_OPA_70, 0);
+    lv_obj_set_style_border_side(
+        cell, selected ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_pos(s_cell_bars[index], 0, 3);
+    lv_obj_set_size(s_cell_bars[index], 3, h - 6);
+    lv_obj_set_style_radius(s_cell_bars[index], 2, 0);
     lv_obj_set_style_bg_color(s_cell_bars[index], lv_color_hex(bar), 0);
     lv_obj_set_style_bg_opa(s_cell_bars[index],
-                            enabled ? LV_OPA_COVER : LV_OPA_50, 0);
+                            selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label,
                                h >= 40 ? &ui_font_kode_bold_15
@@ -609,8 +636,8 @@ static void cell_place(unsigned index, int x, int y, int w, int h,
                                0);
     lv_obj_set_style_text_color(label, lv_color_hex(fg), 0);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_width(label, w - 20);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 12, 0);
+    lv_obj_set_width(label, w - 24);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 14, 0);
 }
 
 static void lobby_label_set(lv_obj_t *label, const char *text,
@@ -659,23 +686,32 @@ static void lobby_cell_place(unsigned index, int y,
     hide_obj(s_cell_labels[index]);
     lv_obj_set_pos(cell, 0, y);
     lv_obj_set_size(cell, 202, 20);
+    lv_obj_set_style_radius(cell, focused ? 4 : 0, 0);
     lv_obj_set_style_bg_color(
-        cell, lv_color_hex(player->occupied ? WW_UI_PANEL_ALT : WW_UI_BG), 0);
+        cell, lv_color_hex(focused ? WW_UI_FOCUS : WW_UI_PANEL_ALT), 0);
+    lv_obj_set_style_bg_opa(
+        cell, focused ? LV_OPA_COVER
+                      : (player->occupied ? LV_OPA_40 : LV_OPA_TRANSP), 0);
+    lv_obj_set_style_border_width(cell, 1, 0);
     lv_obj_set_style_border_color(
         cell, lv_color_hex(focused ? WW_UI_FOCUS : WW_UI_STRUCTURE), 0);
     lv_obj_set_style_border_opa(
         cell, focused ? LV_OPA_COVER : LV_OPA_70, 0);
-    lv_obj_set_pos(s_cell_bars[index], 0, 0);
-    lv_obj_set_size(s_cell_bars[index], 4, 20);
+    lv_obj_set_style_border_side(
+        cell, focused ? LV_BORDER_SIDE_FULL : LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_pos(s_cell_bars[index], 0, 3);
+    lv_obj_set_size(s_cell_bars[index], 3, 14);
+    lv_obj_set_style_radius(s_cell_bars[index], 2, 0);
     lv_obj_set_style_bg_color(
         s_cell_bars[index],
-        lv_color_hex(focused ? WW_UI_FOCUS : WW_UI_STRUCTURE), 0);
+        lv_color_hex(WW_UI_TEXT), 0);
     lv_obj_set_style_bg_opa(
-        s_cell_bars[index], player->occupied ? LV_OPA_COVER : LV_OPA_40, 0);
+        s_cell_bars[index], focused ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
 
     (void)snprintf(seat, sizeof(seat), "S%u", seat_number(player->seat));
     lobby_label_set(s_lobby_seat_labels[index], seat, 12, 1, 20,
-                    &ui_font_kode_regular_11, WW_UI_MUTED,
+                    &ui_font_kode_regular_11,
+                    focused ? WW_UI_FOCUS_TEXT : WW_UI_MUTED,
                     LV_TEXT_ALIGN_LEFT);
 
     if (player->occupied) {
@@ -684,6 +720,16 @@ static void lobby_cell_place(unsigned index, int y,
                        : (player->seat == s_model.local_seat ? "Y" : "G");
         show_obj(s_lobby_identity_badges[index]);
         lv_obj_set_pos(s_lobby_identity_badges[index], 35, 3);
+        lv_obj_set_style_bg_color(s_lobby_identity_badges[index],
+                                  lv_color_hex(WW_UI_BG), 0);
+        lv_obj_set_style_bg_opa(s_lobby_identity_badges[index],
+                                LV_OPA_COVER, 0);
+        lv_obj_set_style_border_color(s_lobby_identity_badges[index],
+                                      lv_color_hex(focused ? WW_UI_FOCUS_TEXT
+                                                           : WW_UI_STRUCTURE),
+                                      0);
+        lv_obj_set_style_text_color(s_lobby_identity_labels[index],
+                                    lv_color_hex(WW_UI_TEXT), 0);
         lv_label_set_text(s_lobby_identity_labels[index], identity);
     } else {
         hide_obj(s_lobby_identity_badges[index]);
@@ -691,10 +737,12 @@ static void lobby_cell_place(unsigned index, int y,
 
     lobby_label_set(s_lobby_name_labels[index], name, 54, 1, 80,
                     &ui_font_kode_regular_13,
-                    player->occupied ? WW_UI_TEXT : WW_UI_MUTED,
+                    focused ? WW_UI_FOCUS_TEXT
+                            : (player->occupied ? WW_UI_TEXT : WW_UI_MUTED),
                     LV_TEXT_ALIGN_LEFT);
     lobby_label_set(s_lobby_state_labels[index], state, 138, 2, 56,
-                    &ui_font_kode_regular_11, state_color,
+                    &ui_font_kode_regular_11,
+                    focused ? WW_UI_FOCUS_TEXT : state_color,
                     LV_TEXT_ALIGN_RIGHT);
 }
 
@@ -720,10 +768,12 @@ static void modal_option_set(unsigned index, int y, int height,
                              const char *text, bool selected,
                              bool dangerous)
 {
-    uint32_t border = selected ? WW_UI_FOCUS : WW_UI_STRUCTURE;
-    uint32_t bar = selected ? WW_UI_FOCUS
-                            : (dangerous ? WW_UI_ERROR : WW_UI_STRUCTURE);
-    uint32_t foreground = dangerous ? WW_UI_ERROR : WW_UI_TEXT;
+    uint32_t fill = selected ? (dangerous ? WW_UI_ERROR : WW_UI_FOCUS)
+                             : WW_UI_PANEL_ALT;
+    uint32_t border = selected ? fill : WW_UI_STRUCTURE;
+    uint32_t foreground = selected
+                              ? (dangerous ? WW_UI_TEXT : WW_UI_FOCUS_TEXT)
+                              : (dangerous ? WW_UI_ERROR : WW_UI_TEXT);
 
     if (index >= 2U) {
         return;
@@ -731,17 +781,22 @@ static void modal_option_set(unsigned index, int y, int height,
     show_obj(s_modal_options[index]);
     lv_obj_set_pos(s_modal_options[index], 12, y);
     lv_obj_set_size(s_modal_options[index], 176, height);
+    lv_obj_set_style_radius(s_modal_options[index], 5, 0);
     lv_obj_set_style_bg_color(s_modal_options[index],
-                              lv_color_hex(WW_UI_PANEL_ALT), 0);
-    lv_obj_set_style_bg_opa(s_modal_options[index], LV_OPA_COVER, 0);
+                              lv_color_hex(fill), 0);
+    lv_obj_set_style_bg_opa(s_modal_options[index],
+                            selected ? LV_OPA_COVER : LV_OPA_50, 0);
     lv_obj_set_style_border_width(s_modal_options[index], 1, 0);
     lv_obj_set_style_border_color(s_modal_options[index],
                                   lv_color_hex(border), 0);
-    lv_obj_set_pos(s_modal_option_bars[index], 0, 0);
-    lv_obj_set_size(s_modal_option_bars[index], 4, height);
+    lv_obj_set_style_border_opa(s_modal_options[index],
+                                selected ? LV_OPA_COVER : LV_OPA_70, 0);
+    lv_obj_set_pos(s_modal_option_bars[index], 0, 3);
+    lv_obj_set_size(s_modal_option_bars[index], 3, height - 6);
     lv_obj_set_style_bg_color(s_modal_option_bars[index],
-                              lv_color_hex(bar), 0);
-    lv_obj_set_style_bg_opa(s_modal_option_bars[index], LV_OPA_COVER, 0);
+                              lv_color_hex(WW_UI_TEXT), 0);
+    lv_obj_set_style_bg_opa(s_modal_option_bars[index],
+                            selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     label_place(s_modal_option_labels[index], text, 13, 5,
                 152, height - 6, &ui_font_kode_bold_13,
                 foreground, LV_TEXT_ALIGN_LEFT);
@@ -768,6 +823,8 @@ static void render_room_modal(void)
     lv_obj_set_style_bg_color(s_modal_rail, lv_color_hex(WW_UI_ERROR), 0);
 
     if (s_model.leaving_room) {
+        lv_obj_set_style_bg_color(s_modal_rail,
+                                  lv_color_hex(WW_UI_WARNING), 0);
         label_place(s_modal_title, "LEAVING ROOM", 12, 30, 176, 28,
                     &ui_font_kode_bold_21, WW_UI_WARNING,
                     LV_TEXT_ALIGN_CENTER);
@@ -798,7 +855,7 @@ static void render_room_modal(void)
     if (s_model.player_kicking) {
         player = player_by_seat(s_model.kick_seat);
         if (player != NULL) {
-            (void)snprintf(status, sizeof(status), "S%u // %.10s",
+            (void)snprintf(status, sizeof(status), "S%u  %.10s",
                            seat_number(player->seat),
                            text_or(player->name, "PLAYER"));
         } else if (s_model.kick_seat < WEREWOLF_UI_PLAYER_COUNT) {
@@ -842,23 +899,21 @@ static void render_room_modal(void)
                             "YOU WERE REMOVED\nFROM THIS ROOM."),
                     16, 84, 168, 42, &ui_font_kode_regular_13,
                     WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
-        modal_option_set(0U, 144, 38, "> OK", true, false);
+        modal_option_set(0U, 144, 38, "OK", true, false);
         footer_set("OK RETURN TO MENU", WW_UI_TEXT);
         return;
     }
 
-    label_place(s_modal_title, "CLOSE ROOM?", 12, 16, 176, 28,
+    label_place(s_modal_title, "CLOSE ROOM?", 12, 22, 176, 28,
                 &ui_font_kode_bold_21, WW_UI_ERROR, LV_TEXT_ALIGN_CENTER);
-    label_place(s_modal_status, "HOST ACTION", 12, 47, 176, 18,
+    label_place(s_modal_status, "HOST ACTION", 12, 51, 176, 18,
                 &ui_font_kode_bold_13, WW_UI_WARNING, LV_TEXT_ALIGN_CENTER);
     label_place(s_modal_body, "ALL PLAYERS WILL\nBE REMOVED.",
-                16, 72, 168, 38, &ui_font_kode_regular_13,
+                16, 76, 168, 38, &ui_font_kode_regular_13,
                 WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
-    modal_option_set(0U, 120, 30,
-                     s_close_focus_close ? "  BACK" : "> BACK",
+    modal_option_set(0U, 120, 30, "BACK",
                      !s_close_focus_close, false);
-    modal_option_set(1U, 158, 30,
-                     s_close_focus_close ? "> CLOSE ROOM" : "  CLOSE ROOM",
+    modal_option_set(1U, 158, 30, "CLOSE ROOM",
                      s_close_focus_close, true);
     footer_set(s_close_focus_close
                    ? "HOLD OK CLOSE  HOLD DN BACK"
@@ -866,11 +921,107 @@ static void render_room_modal(void)
                WW_UI_TEXT);
 }
 
+static void update_moon_motif(uint32_t panel_color)
+{
+    int disc_x = 148;
+    int disc_y = -42;
+    int disc_size = 100;
+    int cut_x = 124;
+    int cut_y = -50;
+    int cut_size = 92;
+    int horizon_x = 132;
+    int horizon_y = 45;
+    int horizon_width = 88;
+    uint32_t disc_color = WW_UI_FOCUS;
+    lv_opa_t disc_opacity = LV_OPA_20;
+    lv_opa_t cut_opacity = LV_OPA_COVER;
+    lv_opa_t horizon_opacity = LV_OPA_40;
+
+    switch (s_model.page) {
+    case WEREWOLF_UI_PAGE_ROLE:
+    case WEREWOLF_UI_PAGE_PRIVATE_RESULT:
+        disc_x = 51;
+        disc_y = 43;
+        disc_size = 112;
+        cut_x = 39;
+        cut_y = 31;
+        cut_size = 104;
+        disc_opacity = s_private_revealed ? LV_OPA_30 : LV_OPA_20;
+        cut_opacity = s_private_revealed ? LV_OPA_TRANSP : LV_OPA_COVER;
+        horizon_opacity = LV_OPA_TRANSP;
+        break;
+    case WEREWOLF_UI_PAGE_DAY_RESULT:
+    case WEREWOLF_UI_PAGE_SPEAKING:
+        disc_x = 136;
+        disc_y = 150;
+        disc_size = 110;
+        cut_opacity = LV_OPA_TRANSP;
+        horizon_x = 102;
+        horizon_y = 184;
+        horizon_width = 116;
+        disc_color = WW_UI_WARNING;
+        disc_opacity = LV_OPA_20;
+        break;
+    case WEREWOLF_UI_PAGE_ELIMINATED:
+        disc_x = 51;
+        disc_y = 45;
+        disc_size = 112;
+        cut_opacity = LV_OPA_TRANSP;
+        horizon_x = 39;
+        horizon_y = 100;
+        horizon_width = 136;
+        disc_color = WW_UI_ERROR;
+        disc_opacity = LV_OPA_30;
+        horizon_opacity = LV_OPA_70;
+        break;
+    case WEREWOLF_UI_PAGE_GAME_OVER:
+        disc_x = 170;
+        disc_y = -42;
+        disc_size = 104;
+        cut_opacity = LV_OPA_TRANSP;
+        disc_opacity = LV_OPA_20;
+        horizon_x = 148;
+        horizon_y = 39;
+        horizon_width = 74;
+        break;
+    case WEREWOLF_UI_PAGE_ERROR:
+    case WEREWOLF_UI_PAGE_ROOM_CLOSED:
+        disc_x = 51;
+        disc_y = 45;
+        disc_size = 112;
+        cut_opacity = LV_OPA_TRANSP;
+        disc_color = WW_UI_ERROR;
+        disc_opacity = LV_OPA_20;
+        horizon_opacity = LV_OPA_TRANSP;
+        break;
+    default:
+        break;
+    }
+
+    lv_obj_set_pos(s_moon_disc, disc_x, disc_y);
+    lv_obj_set_size(s_moon_disc, disc_size, disc_size);
+    lv_obj_set_style_radius(s_moon_disc, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_moon_disc, lv_color_hex(disc_color), 0);
+    lv_obj_set_style_bg_opa(s_moon_disc, disc_opacity, 0);
+
+    lv_obj_set_pos(s_moon_cutout, cut_x, cut_y);
+    lv_obj_set_size(s_moon_cutout, cut_size, cut_size);
+    lv_obj_set_style_radius(s_moon_cutout, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(s_moon_cutout, lv_color_hex(panel_color), 0);
+    lv_obj_set_style_bg_opa(s_moon_cutout, cut_opacity, 0);
+
+    lv_obj_set_pos(s_moon_horizon, horizon_x, horizon_y);
+    lv_obj_set_size(s_moon_horizon, horizon_width, 1);
+    lv_obj_set_style_bg_color(s_moon_horizon,
+                              lv_color_hex(disc_color), 0);
+    lv_obj_set_style_bg_opa(s_moon_horizon, horizon_opacity, 0);
+}
+
 static void render_reset(uint32_t panel_color, uint32_t text_color)
 {
     update_header();
     lv_obj_set_style_bg_color(s_panel, lv_color_hex(panel_color), 0);
-    lv_obj_set_style_border_color(s_panel, lv_color_hex(WW_UI_STRUCTURE), 0);
+    update_moon_motif(panel_color);
     hide_obj(s_title);
     hide_obj(s_subtitle);
     hide_obj(s_detail);
@@ -1107,16 +1258,18 @@ static void render_mode(void)
     char subtitle[40];
 
     render_reset(WW_UI_PANEL, WW_UI_TEXT);
-    label_place(s_title, "LOCAL TABLE", 0, 2, 202, 26,
-                &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
-    (void)snprintf(subtitle, sizeof(subtitle), "DEVICE // %.10s",
+    label_place(s_title, "THE VILLAGE", 10, 7, 182, 26,
+                &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_LEFT);
+    (void)snprintf(subtitle, sizeof(subtitle), "PLAYER  %.10s",
                    text_or(s_model.local_name, "UNNAMED"));
-    label_place(s_subtitle, subtitle, 0, 31, 202, 20,
-                &ui_font_kode_regular_13, WW_UI_SUCCESS, LV_TEXT_ALIGN_CENTER);
-    cell_place(0, 10, 61, 182, 52, "01  CREATE ROOM",
+    label_place(s_subtitle, subtitle, 10, 36, 182, 20,
+                &ui_font_kode_regular_13, WW_UI_SUCCESS, LV_TEXT_ALIGN_LEFT);
+    cell_place(0, 10, 68, 182, 50, "CREATE ROOM",
                s_mode_cursor == WEREWOLF_UI_MODE_CREATE, true, false);
-    cell_place(1, 10, 126, 182, 52, "02  JOIN ROOM",
+    cell_place(1, 10, 130, 182, 50, "JOIN ROOM",
                s_mode_cursor == WEREWOLF_UI_MODE_JOIN, true, false);
+    label_place(s_detail, "7 DEVICES  OFFLINE PLAY", 10, 202, 182, 18,
+                &ui_font_kode_regular_11, WW_UI_MUTED, LV_TEXT_ALIGN_LEFT);
     footer_set("UP/DN MODE  |  OK SELECT", WW_UI_TEXT);
 }
 
@@ -1139,22 +1292,22 @@ static void render_room_list(void)
         visible_indices[visible_count++] = i;
     }
 
-    label_place(s_title, "SELECT ROOM", 0, 0, 202, 25,
-                &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
+    label_place(s_title, "OPEN ROOMS", 10, 4, 182, 25,
+                &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_LEFT);
     if (visible_count == 0U) {
-        label_place(s_subtitle, "NO ROOMS YET", 0, 25, 202, 18,
+        label_place(s_subtitle, "NO ROOMS YET", 10, 31, 182, 18,
                     &ui_font_kode_bold_13, WW_UI_WARNING,
-                    LV_TEXT_ALIGN_CENTER);
+                    LV_TEXT_ALIGN_LEFT);
         label_place(s_detail, "STILL SCANNING", 12, 100, 178, 40,
                     &ui_font_kode_regular_13, WW_UI_TEXT,
                     LV_TEXT_ALIGN_CENTER);
     } else {
         unsigned window = (selected / 4U) * 4U;
-        (void)snprintf(line, sizeof(line), "%u ROOM%s // SELECT HOST",
+        (void)snprintf(line, sizeof(line), "%u ROOM%s  CHOOSE HOST",
                        visible_count, visible_count == 1U ? "" : "S");
-        label_place(s_subtitle, line, 0, 25, 202, 18,
+        label_place(s_subtitle, line, 10, 31, 182, 18,
                     &ui_font_kode_regular_13, WW_UI_SUCCESS,
-                    LV_TEXT_ALIGN_CENTER);
+                    LV_TEXT_ALIGN_LEFT);
         for (unsigned row = 0U; row < 4U && window + row < visible_count;
              ++row) {
             const werewolf_ui_room_t *room =
@@ -1183,22 +1336,22 @@ static void render_lobby(void)
 
     snprintf(title, sizeof(title), "ROOM %s",
              text_or(s_model.room_code, "------"));
-    label_place(s_title, title, 0, 0, 202, 25,
-                &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
+    label_place(s_title, title, 8, 0, 194, 25,
+                &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_LEFT);
     if (!s_model.is_host && has_verify) {
-        label_place(s_subtitle, verify, 0, 25, 202, 18,
+        label_place(s_subtitle, verify, 8, 25, 194, 18,
                     &ui_font_kode_bold_13, WW_UI_WARNING,
-                    LV_TEXT_ALIGN_CENTER);
+                    LV_TEXT_ALIGN_LEFT);
     } else if (lobby_can_start()) {
-        label_place(s_subtitle, "ALL READY // HOLD OK START",
-                    0, 25, 202, 18, &ui_font_kode_bold_13,
-                    WW_UI_SUCCESS, LV_TEXT_ALIGN_CENTER);
+        label_place(s_subtitle, "ALL READY  HOLD OK START",
+                    8, 25, 194, 18, &ui_font_kode_bold_13,
+                    WW_UI_SUCCESS, LV_TEXT_ALIGN_LEFT);
     } else {
-        snprintf(line, sizeof(line), "%u/7 SEATS // %s",
+        snprintf(line, sizeof(line), "%u/7 SEATS  %s",
                  occupied_count(), s_model.is_host ? "HOST" : "GUEST");
-        label_place(s_subtitle, line, 0, 25, 202, 18,
+        label_place(s_subtitle, line, 8, 25, 194, 18,
                     &ui_font_kode_regular_13, WW_UI_SUCCESS,
-                    LV_TEXT_ALIGN_CENTER);
+                    LV_TEXT_ALIGN_LEFT);
     }
 
     for (unsigned i = 0; i < WEREWOLF_UI_PLAYER_COUNT; ++i) {
@@ -1267,7 +1420,7 @@ static void render_player_action(void)
 
     (void)snprintf(title, sizeof(title), "%.10s",
                    text_or(player->name, "UNNAMED"));
-    (void)snprintf(status, sizeof(status), "S%u // %s",
+    (void)snprintf(status, sizeof(status), "S%u  %s",
                    seat_number(player->seat),
                    player->ready ? "READY" : "WAIT");
     label_place(s_title, title, 0, 2, 202, 25,
@@ -1288,7 +1441,15 @@ static void render_player_action(void)
                !s_player_action_focus_kick, true, false);
     cell_place(1U, 10, 172, 182, 38, "KICK PLAYER",
                s_player_action_focus_kick, can_kick, false);
-    lv_obj_set_style_text_color(s_cell_labels[1], lv_color_hex(WW_UI_ERROR), 0);
+    if (s_player_action_focus_kick && can_kick) {
+        lv_obj_set_style_bg_color(s_cells[1], lv_color_hex(WW_UI_ERROR), 0);
+        lv_obj_set_style_border_color(s_cells[1], lv_color_hex(WW_UI_ERROR), 0);
+        lv_obj_set_style_text_color(s_cell_labels[1],
+                                    lv_color_hex(WW_UI_TEXT), 0);
+    } else {
+        lv_obj_set_style_text_color(s_cell_labels[1],
+                                    lv_color_hex(WW_UI_ERROR), 0);
+    }
     footer_set(s_action_latched
                    ? "ACTION SENT  WAIT"
                    : (s_player_action_focus_kick
@@ -1302,7 +1463,7 @@ static void render_private(void)
     char line[64];
     const lv_font_t *result_font = &ui_font_kode_bold_21;
     render_reset(WW_UI_BG, WW_UI_TEXT);
-    label_place(s_title, "PRIVATE CHANNEL", 0, 4, 202, 25,
+    label_place(s_title, "PRIVATE", 10, 4, 182, 25,
                 &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
 
     if (s_model.waiting_for_players) {
@@ -1359,19 +1520,19 @@ static void render_target(bool vote)
     const bool pending = s_confirm_pending;
     render_reset(WW_UI_BG, WW_UI_TEXT);
     label_place(s_title, vote ? "SECRET VOTE" : "NIGHT ACTION",
-                0, 0, 202, 25, &ui_font_kode_bold_21,
-                WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
+                8, 0, 194, 25, &ui_font_kode_bold_21,
+                WW_UI_TEXT, LV_TEXT_ALIGN_LEFT);
 
     if (vote) {
-        snprintf(line, sizeof(line), "ROUND %u // %u/%u // GUIDE %uS",
+        snprintf(line, sizeof(line), "ROUND %u  %u/%u  GUIDE %uS",
                  s_model.round, s_model.votes_received,
                  s_model.votes_expected, s_model.guide_seconds);
     } else {
-        snprintf(line, sizeof(line), "NIGHT %u // GUIDE %uS",
+        snprintf(line, sizeof(line), "NIGHT %u  GUIDE %uS",
                  s_model.round, s_model.guide_seconds);
     }
-    label_place(s_subtitle, line, 0, 25, 202, 18,
-                &ui_font_kode_regular_13, WW_UI_FOCUS, LV_TEXT_ALIGN_CENTER);
+    label_place(s_subtitle, line, 8, 25, 194, 18,
+                &ui_font_kode_regular_13, WW_UI_FOCUS, LV_TEXT_ALIGN_LEFT);
 
     /* This renderer never branches on local_role. Night brightness, animation
      * (none), object layout and confirm cadence therefore stay role-neutral. */
@@ -1427,7 +1588,7 @@ static void render_target(bool vote)
 static void render_day_result(void)
 {
     char line[40];
-    render_reset(WW_UI_PANEL, WW_UI_TEXT);
+    render_reset(WW_UI_PANEL_WARM, WW_UI_TEXT);
     label_place(s_title, text_or(s_model.headline, "DAY RESULT"),
                 0, 6, 202, 28, &ui_font_kode_bold_21,
                 WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
@@ -1437,14 +1598,14 @@ static void render_day_result(void)
     label_place(s_detail, text_or(s_model.detail, "No one was eliminated."),
                 12, 76, 178, 85, &ui_font_kode_regular_13,
                 WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
-    footer_set(s_action_latched ? "ACK SENT // WAIT" : "OK CONTINUE", WW_UI_TEXT);
+    footer_set(s_action_latched ? "ACK SENT  WAIT" : "OK CONTINUE", WW_UI_TEXT);
 }
 
 static void render_speaking(void)
 {
     char line[64];
     const werewolf_ui_player_t *speaker = player_by_seat(s_model.speaker_seat);
-    render_reset(WW_UI_PANEL, WW_UI_TEXT);
+    render_reset(WW_UI_PANEL_WARM, WW_UI_TEXT);
     label_place(s_title, text_or(s_model.headline, "SPEAKING"),
                 0, 5, 202, 26, &ui_font_kode_bold_21,
                 WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
@@ -1469,7 +1630,7 @@ static void render_speaking(void)
         s_model.local_seat == s_model.speaker_seat && !s_action_latched) {
         footer_set("HOLD OK TO PASS", WW_UI_TEXT);
     } else {
-        footer_set("LISTEN // INPUT PAUSED", WW_UI_TEXT);
+        footer_set("LISTEN  INPUT PAUSED", WW_UI_TEXT);
     }
 }
 
@@ -1493,7 +1654,7 @@ static void render_eliminated(void)
                         "Role stays hidden. Dead players keep public view."),
                 12, 113, 178, 62, &ui_font_kode_regular_13,
                 WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
-    footer_set(s_action_latched ? "ACK SENT // WAIT" : "OK CONTINUE", WW_UI_TEXT);
+    footer_set(s_action_latched ? "ACK SENT  WAIT" : "OK CONTINUE", WW_UI_TEXT);
 }
 
 static void render_game_over(void)
@@ -1510,7 +1671,7 @@ static void render_game_over(void)
     label_place(s_title, winner_name(s_model.winner),
                 0, 0, 202, 25, &ui_font_kode_bold_21,
                 winner_color, LV_TEXT_ALIGN_CENTER);
-    label_place(s_subtitle, "FULL ROLE REVIEW", 0, 25, 202, 18,
+    label_place(s_subtitle, "ROLE REVIEW", 0, 25, 202, 18,
                 &ui_font_kode_regular_13, WW_UI_SUCCESS, LV_TEXT_ALIGN_CENTER);
 
     for (unsigned i = 0; i < WEREWOLF_UI_PLAYER_COUNT; ++i) {
@@ -1567,14 +1728,14 @@ static void render_connection_banner(void)
 
     switch (s_model.connection) {
     case WEREWOLF_UI_CONNECTION_RECONNECTING:
-        text = "RECONNECTING // INPUT PAUSED";
+        text = "RECONNECTING  INPUT PAUSED";
         break;
     case WEREWOLF_UI_CONNECTION_DISCONNECTED:
-        text = "DISCONNECTED // INPUT PAUSED";
+        text = "DISCONNECTED  INPUT PAUSED";
         color = WW_UI_ERROR;
         break;
     case WEREWOLF_UI_CONNECTION_HOST_LOST:
-        text = "HOST LOST // GAME ABORTED";
+        text = "HOST LOST  GAME ABORTED";
         color = WW_UI_ERROR;
         break;
     default:
@@ -1719,9 +1880,17 @@ bool werewolf_ui_create(const werewolf_ui_model_t *initial_model)
 
     s_screen = screen_create();
     s_panel = box(s_screen, 8, 50, 224, 240, WW_UI_PANEL, LV_OPA_COVER);
-    lv_obj_set_style_border_width(s_panel, 1, 0);
-    lv_obj_set_style_border_color(s_panel, lv_color_hex(WW_UI_STRUCTURE), 0);
+    lv_obj_set_style_radius(s_panel, 8, 0);
+    lv_obj_set_style_border_width(s_panel, 0, 0);
     lv_obj_set_style_pad_all(s_panel, 7, 0);
+    s_moon_disc = box(s_panel, 148, -42, 100, 100,
+                      WW_UI_MOON_DIM, LV_OPA_20);
+    lv_obj_set_style_radius(s_moon_disc, LV_RADIUS_CIRCLE, 0);
+    s_moon_cutout = box(s_panel, 124, -50, 92, 92,
+                        WW_UI_PANEL, LV_OPA_COVER);
+    lv_obj_set_style_radius(s_moon_cutout, LV_RADIUS_CIRCLE, 0);
+    s_moon_horizon = box(s_panel, 132, 45, 88, 1,
+                         WW_UI_FOCUS, LV_OPA_40);
     s_title = label_create(s_panel, "", &ui_font_kode_bold_21, WW_UI_TEXT);
     s_subtitle = label_create(s_panel, "", &ui_font_kode_regular_13,
                               WW_UI_TEXT);
@@ -1738,7 +1907,9 @@ bool werewolf_ui_create(const werewolf_ui_model_t *initial_model)
         s_lobby_seat_labels[i] = label_create(
             s_cells[i], "", &ui_font_kode_regular_11, WW_UI_MUTED);
         s_lobby_identity_badges[i] = box(s_cells[i], 35, 3, 14, 14,
-                                        WW_UI_BG, LV_OPA_TRANSP);
+                                        WW_UI_BG, LV_OPA_COVER);
+        lv_obj_set_style_radius(s_lobby_identity_badges[i],
+                                LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_border_width(s_lobby_identity_badges[i], 1, 0);
         lv_obj_set_style_border_color(s_lobby_identity_badges[i],
                                       lv_color_hex(WW_UI_STRUCTURE), 0);
@@ -1757,24 +1928,30 @@ bool werewolf_ui_create(const werewolf_ui_model_t *initial_model)
         hide_obj(s_lobby_state_labels[i]);
     }
 
-    box(s_screen, 8, 297, 44, 1, WW_UI_FOCUS, LV_OPA_COVER);
-    box(s_screen, 56, 297, 176, 1, WW_UI_TEXT, LV_OPA_60);
+    box(s_screen, 8, 297, 224, 1, WW_UI_STRUCTURE, LV_OPA_80);
+    lv_obj_t *footer_mark = box(s_screen, 113, 295, 14, 3,
+                                WW_UI_FOCUS, LV_OPA_COVER);
+    lv_obj_set_style_radius(footer_mark, 2, 0);
     s_footer = label_create(s_screen, "", &ui_font_kode_regular_11,
                             WW_UI_TEXT);
     s_banner = box(s_screen, 8, 50, 224, 30,
                    WW_UI_WARNING, LV_OPA_COVER);
+    lv_obj_set_style_radius(s_banner, 6, 0);
     s_banner_label = centered_label(s_banner, "",
                                     &ui_font_kode_bold_13, WW_UI_BG);
 
     s_modal_overlay = box(s_screen, 8, 50, 224, 240,
                           WW_UI_BG, LV_OPA_80);
-    s_modal_dialog = box(s_modal_overlay, 12, 24, 200, 202,
+    lv_obj_set_style_radius(s_modal_overlay, 8, 0);
+    s_modal_dialog = box(s_modal_overlay, 12, 18, 200, 204,
                          WW_UI_ERROR_PANEL, LV_OPA_COVER);
+    lv_obj_set_style_radius(s_modal_dialog, 8, 0);
     lv_obj_set_style_border_width(s_modal_dialog, 1, 0);
     lv_obj_set_style_border_color(s_modal_dialog,
                                   lv_color_hex(WW_UI_STRUCTURE), 0);
-    s_modal_rail = box(s_modal_dialog, 0, 0, 4, 202,
+    s_modal_rail = box(s_modal_dialog, 95, 8, 10, 10,
                        WW_UI_ERROR, LV_OPA_COVER);
+    lv_obj_set_style_radius(s_modal_rail, LV_RADIUS_CIRCLE, 0);
     s_modal_title = label_create(s_modal_dialog, "",
                                  &ui_font_kode_bold_21, WW_UI_TEXT);
     s_modal_status = label_create(s_modal_dialog, "",
@@ -1784,9 +1961,11 @@ bool werewolf_ui_create(const werewolf_ui_model_t *initial_model)
     for (unsigned i = 0U; i < 2U; ++i) {
         s_modal_options[i] = box(s_modal_dialog, 12, 120, 176, 30,
                                  WW_UI_PANEL_ALT, LV_OPA_COVER);
+        lv_obj_set_style_radius(s_modal_options[i], 5, 0);
         lv_obj_set_style_border_width(s_modal_options[i], 1, 0);
         s_modal_option_bars[i] = box(s_modal_options[i], 0, 0, 4, 30,
                                      WW_UI_STRUCTURE, LV_OPA_COVER);
+        lv_obj_set_style_radius(s_modal_option_bars[i], 2, 0);
         s_modal_option_labels[i] = label_create(
             s_modal_options[i], "", &ui_font_kode_bold_13, WW_UI_TEXT);
     }
@@ -2472,6 +2651,9 @@ void werewolf_ui_destroy(void)
     lv_obj_delete(s_screen);
     s_screen = NULL;
     s_panel = NULL;
+    s_moon_disc = NULL;
+    s_moon_cutout = NULL;
+    s_moon_horizon = NULL;
     s_title = NULL;
     s_subtitle = NULL;
     s_detail = NULL;

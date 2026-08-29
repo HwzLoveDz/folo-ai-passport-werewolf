@@ -33,8 +33,10 @@ CONFIG_LV_FONT_MONTSERRAT_14=y
 # 狼人杀 FUI 的对象树和首帧临时 draw task 会超过 24KB。48KB 与同一
 # 硬件上 gesture-wand FUI 的已验证基线一致，启动时再输出实机峰值和余量。
 CONFIG_LV_MEM_SIZE_KILOBYTES=48
-# ESP32-C3 单核软件渲染只使用矩形、方头线段与位图；禁用圆角/阴影遮罩路径。
-# CONFIG_LV_DRAW_SW_COMPLEX is not set
+# Eclipse Ledger 使用圆角选中项、弹窗与月蚀圆形遮罩。只启用软件复杂绘制
+# 的圆角遮罩能力，仍不使用渐变、阴影或动画；首帧日志继续监控峰值与余量。
+CONFIG_LV_DRAW_SW_COMPLEX=y
+# CONFIG_LV_USE_DRAW_SW_COMPLEX_GRADIENTS is not set
 
 # --- ESP-NOW multiplayer transport ---
 # Game traffic uses ESP-NOW encrypted unicast. Broadcast is limited to discovery

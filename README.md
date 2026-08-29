@@ -9,6 +9,39 @@
 当前版本提供可构建、可测试的 MVP 纵向切片。规则由确定性 C 状态机裁决；
 AI 仅保留为未来旁白能力，不参与角色、投票或胜负判定。
 
+## 界面预览
+
+以下画面由生产 LVGL 界面源码直接渲染，覆盖组队、玩家管理与完整游戏流程。
+
+| 模式选择 | 全员就绪 | 玩家详情 |
+| :---: | :---: | :---: |
+| <img src="simulator/out/current-mode-create.png" width="200" alt="Mote Werewolf 模式选择界面"> | <img src="simulator/out/current-lobby-host-all-ready.png" width="200" alt="Mote Werewolf 全员就绪大厅"> | <img src="simulator/out/current-player-detail-kick.png" width="200" alt="Mote Werewolf 玩家详情与踢出操作"> |
+| 角色揭示 | 夜间行动 | 终局复盘 |
+| <img src="simulator/out/current-role-revealed.png" width="200" alt="Mote Werewolf 私密角色揭示界面"> | <img src="simulator/out/current-night-select.png" width="200" alt="Mote Werewolf 夜间目标选择界面"> | <img src="simulator/out/current-game-over.png" width="200" alt="Mote Werewolf 终局角色复盘界面"> |
+
+## 开发进度
+
+```mermaid
+flowchart LR
+    P0["P0 · 规则边界<br/>已完成"] --> P1["P1 · 软件纵切<br/>已完成"]
+    P1 --> P2["P2 · 实体验收<br/>进行中"]
+    P2 --> P3["P3 · 体验完善<br/>下一阶段"]
+    P3 --> P4["P4 · 多游戏平台<br/>未来"]
+
+    classDef done fill:#29473F,stroke:#78B39B,color:#F1E8D2,stroke-width:2px;
+    classDef active fill:#624817,stroke:#E0AD53,color:#FFF4D6,stroke-width:3px;
+    classDef future fill:#181818,stroke:#6F6A60,color:#C9C2B3,stroke-width:1px;
+    class P0,P1 done;
+    class P2 active;
+    class P3,P4 future;
+    linkStyle default stroke:#6F6A60,stroke-width:2px;
+```
+
+**当前里程碑：P2 实体设备验收。** 软件纵向切片、主机测试、完整 UI 状态集和
+ESP-IDF 构建已经完成；双机已跑通建房、加入、准备、只读 `VERIFY`、踢出与退房等
+组队主流程。首版发布前仍需完成三机多房间与丢包恢复、七机完整跑局，以及串口和
+空口隐私审计。详细门槛见 [开发路线](docs/ROADMAP.md)。
+
 ## 当前功能
 
 - 覆盖建房、房间列表、安全配对、准备、发牌、夜间行动、天亮、顺序发言、
