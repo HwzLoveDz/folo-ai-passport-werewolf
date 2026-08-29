@@ -16,6 +16,32 @@ These screens are rendered directly from the production LVGL source and cover ro
 | Role Reveal | Night Action | Final Review |
 | <img src="simulator/out/current-role-revealed.png" width="200" alt="Mote Werewolf private role reveal screen"> | <img src="simulator/out/current-night-select.png" width="200" alt="Mote Werewolf night target selection screen"> | <img src="simulator/out/current-game-over.png" width="200" alt="Mote Werewolf final role review screen"> |
 
+## Development Progress
+
+```mermaid
+flowchart LR
+    P0["P0 · Rules & Scope<br/>Complete"] --> P1["P1 · Software Slice<br/>Complete"]
+    P1 --> P2["P2 · Hardware Validation<br/>In Progress"]
+    P2 --> P3["P3 · Experience Polish<br/>Next"]
+    P3 --> P4["P4 · Multi-game Platform<br/>Future"]
+
+    classDef done fill:#29473F,stroke:#78B39B,color:#F1E8D2,stroke-width:2px;
+    classDef active fill:#624817,stroke:#E0AD53,color:#FFF4D6,stroke-width:3px;
+    classDef future fill:#181818,stroke:#6F6A60,color:#C9C2B3,stroke-width:1px;
+    class P0,P1 done;
+    class P2 active;
+    class P3,P4 future;
+    linkStyle default stroke:#6F6A60,stroke-width:2px;
+```
+
+**Current milestone: P2 hardware validation.** The software vertical slice,
+host tests, complete UI state set, and ESP-IDF build are complete. Two-device
+tests cover room creation, joining, readiness, read-only `VERIFY`, targeted
+kick, and room exit. The first release still requires three-device multi-room
+and packet-loss recovery tests, a complete seven-device game, and serial plus
+over-the-air privacy audits. See the [development roadmap](docs/ROADMAP.md) for
+the full acceptance gates.
+
 ## Current features
 
 - Room creation, stable room-directory selection, secure pairing, readiness, the complete game-phase flow, and final reveal.
