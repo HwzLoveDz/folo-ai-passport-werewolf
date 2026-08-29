@@ -6,6 +6,16 @@
 
 The current MVP implements room discovery, secure pairing, readiness, role assignment, night actions, dawn, ordered discussion, secret voting, tie revotes, victory evaluation, and the final reveal. A deterministic C state machine owns the rules. Future AI features may narrate the game, but never decide roles, votes, or winners.
 
+## UI Preview
+
+These screens are rendered directly from the production LVGL source and cover room setup, player management, and the complete game flow.
+
+| Mode Select | All Ready | Player Detail |
+| :---: | :---: | :---: |
+| <img src="simulator/out/current-mode-create.png" width="200" alt="Mote Werewolf mode selection screen"> | <img src="simulator/out/current-lobby-host-all-ready.png" width="200" alt="Mote Werewolf all-ready lobby"> | <img src="simulator/out/current-player-detail-kick.png" width="200" alt="Mote Werewolf player detail and kick action"> |
+| Role Reveal | Night Action | Final Review |
+| <img src="simulator/out/current-role-revealed.png" width="200" alt="Mote Werewolf private role reveal screen"> | <img src="simulator/out/current-night-select.png" width="200" alt="Mote Werewolf night target selection screen"> | <img src="simulator/out/current-game-over.png" width="200" alt="Mote Werewolf final role review screen"> |
+
 ## Current features
 
 - Room creation, stable room-directory selection, secure pairing, readiness, the complete game-phase flow, and final reveal.

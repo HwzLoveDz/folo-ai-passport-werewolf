@@ -9,6 +9,16 @@
 当前版本提供可构建、可测试的 MVP 纵向切片。规则由确定性 C 状态机裁决；
 AI 仅保留为未来旁白能力，不参与角色、投票或胜负判定。
 
+## 界面预览
+
+以下画面由生产 LVGL 界面源码直接渲染，覆盖组队、玩家管理与完整游戏流程。
+
+| 模式选择 | 全员就绪 | 玩家详情 |
+| :---: | :---: | :---: |
+| <img src="simulator/out/current-mode-create.png" width="200" alt="Mote Werewolf 模式选择界面"> | <img src="simulator/out/current-lobby-host-all-ready.png" width="200" alt="Mote Werewolf 全员就绪大厅"> | <img src="simulator/out/current-player-detail-kick.png" width="200" alt="Mote Werewolf 玩家详情与踢出操作"> |
+| 角色揭示 | 夜间行动 | 终局复盘 |
+| <img src="simulator/out/current-role-revealed.png" width="200" alt="Mote Werewolf 私密角色揭示界面"> | <img src="simulator/out/current-night-select.png" width="200" alt="Mote Werewolf 夜间目标选择界面"> | <img src="simulator/out/current-game-over.png" width="200" alt="Mote Werewolf 终局角色复盘界面"> |
+
 ## 当前功能
 
 - 覆盖建房、房间列表、安全配对、准备、发牌、夜间行动、天亮、顺序发言、
