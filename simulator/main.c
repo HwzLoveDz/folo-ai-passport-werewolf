@@ -290,6 +290,8 @@ static bool configure_state(werewolf_ui_model_t *model, const char *state)
     } else if (strcmp(state, "role-sealed-wolf") == 0 ||
                strcmp(state, "role-revealed") == 0 ||
                strcmp(state, "role-release") == 0 ||
+               strcmp(state, "role-click-before-view") == 0 ||
+               strcmp(state, "role-trailing-click") == 0 ||
                strcmp(state, "role-long-unarmed") == 0 ||
                strcmp(state, "role-heartbeat") == 0 ||
                strcmp(state, "role-private-epoch-changed") == 0 ||
@@ -301,6 +303,23 @@ static bool configure_state(werewolf_ui_model_t *model, const char *state)
         model->local_role = WEREWOLF_UI_ROLE_WOLF;
         copy_text(model->private_detail, sizeof(model->private_detail),
                   "Your teammate is SEAT 2.");
+    } else if (strcmp(state, "role-revealed-villager") == 0 ||
+               strcmp(state, "role-review-ready-villager") == 0 ||
+               strcmp(state, "role-review-again-villager") == 0 ||
+               strcmp(state, "role-confirm-villager") == 0) {
+        model->page = WEREWOLF_UI_PAGE_ROLE;
+        model->public_phase = WEREWOLF_UI_PUBLIC_PHASE_ROLE_CHECK;
+        model->game_started = true;
+        model->local_role = WEREWOLF_UI_ROLE_VILLAGER;
+        copy_text(model->private_detail, sizeof(model->private_detail),
+                  "Find the wolves with the table.");
+    } else if (strcmp(state, "role-revealed-guard") == 0) {
+        model->page = WEREWOLF_UI_PAGE_ROLE;
+        model->public_phase = WEREWOLF_UI_PUBLIC_PHASE_ROLE_CHECK;
+        model->game_started = true;
+        model->local_role = WEREWOLF_UI_ROLE_GUARD;
+        copy_text(model->private_detail, sizeof(model->private_detail),
+                  "Do not guard the same seat twice.");
     } else if (strcmp(state, "role-sealed-seer") == 0) {
         model->page = WEREWOLF_UI_PAGE_ROLE;
         model->public_phase = WEREWOLF_UI_PUBLIC_PHASE_ROLE_CHECK;
@@ -336,6 +355,13 @@ static bool configure_state(werewolf_ui_model_t *model, const char *state)
                strcmp(state, "private-sealed-good-local-pending") == 0 ||
                strcmp(state, "private-sealed-good-no-local-pending") == 0 ||
                strcmp(state, "private-no-result") == 0 ||
+               strcmp(state, "private-review-ready") == 0 ||
+               strcmp(state, "private-review-again") == 0 ||
+               strcmp(state, "private-confirm") == 0 ||
+               strcmp(state, "private-click-before-view") == 0 ||
+               strcmp(state, "private-trailing-click") == 0 ||
+               strcmp(state, "private-heartbeat") == 0 ||
+               strcmp(state, "private-epoch-changed") == 0 ||
                strcmp(state, "private-waiting") == 0) {
         model->page = WEREWOLF_UI_PAGE_PRIVATE_RESULT;
         model->public_phase = WEREWOLF_UI_PUBLIC_PHASE_NIGHT;
@@ -564,6 +590,104 @@ static bool configure_state(werewolf_ui_model_t *model, const char *state)
             model->battery_soc = 0U;
         }
     } else {
+        return false;
+    }
+    return true;
+}
+
+static bool private_reveal(bool role_page, const char *state,
+                           werewolf_ui_action_t *action)
+{
+    if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_PRESS, action) ||
+        werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_LONG, action)) {
+        fprintf(stderr, "Private reveal emitted an action: %s\n", state);
+        return false;
+    }
+
+    werewolf_ui_feedback_t expected =
+        role_page ? WEREWOLF_UI_FEEDBACK_PRIVATE_REVEAL
+                  : WEREWOLF_UI_FEEDBACK_NONE;
+    if (werewolf_ui_take_feedback() != expected) {
+        fprintf(stderr, "Private reveal feedback mismatch: %s\n", state);
+        return false;
+    }
+    return true;
+}
+
+static bool private_release(bool role_page, const char *state,
+                            werewolf_ui_action_t *action)
+{
+    if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_RELEASE, action)) {
+        fprintf(stderr, "Private release emitted an action: %s\n", state);
+        return false;
+    }
+
+    werewolf_ui_feedback_t expected =
+        role_page ? WEREWOLF_UI_FEEDBACK_PRIVATE_SEAL
+                  : WEREWOLF_UI_FEEDBACK_NONE;
+    if (werewolf_ui_take_feedback() != expected) {
+        fprintf(stderr, "Private seal feedback mismatch: %s\n", state);
+        return false;
+    }
+    return true;
+}
+
+static bool private_short_ok(bool role_page, bool expect_action,
+                             const werewolf_ui_model_t *model,
+                             const char *state,
+                             werewolf_ui_action_t *action)
+{
+    if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_PRESS, action) ||
+        werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_RELEASE, action)) {
+        fprintf(stderr, "Private short press emitted before CLICK: %s\n",
+                state);
+        return false;
+    }
+
+    bool emitted = werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                          WEREWOLF_UI_KEY_EVENT_CLICK,
+                                          action);
+    werewolf_ui_action_type_t expected_type =
+        role_page ? WEREWOLF_UI_ACTION_ROLE_SEEN
+                  : WEREWOLF_UI_ACTION_ACK_RESULT;
+    if (emitted != expect_action ||
+        (expect_action &&
+         (action->type != expected_type ||
+          !werewolf_ui_action_matches_model(action, model)))) {
+        fprintf(stderr,
+                "Private short-OK action mismatch: state=%s emitted=%d "
+                "expected=%d type=%d\n",
+                state, emitted, expect_action, (int)action->type);
+        return false;
+    }
+    werewolf_ui_feedback_t expected_feedback =
+        expect_action ? WEREWOLF_UI_FEEDBACK_CONFIRMED
+                      : WEREWOLF_UI_FEEDBACK_NONE;
+    if (werewolf_ui_take_feedback() != expected_feedback) {
+        fprintf(stderr, "Private short-OK feedback mismatch: %s\n", state);
+        return false;
+    }
+    if (expect_action &&
+        werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_CLICK, action)) {
+        fprintf(stderr, "Private completion emitted twice: %s\n", state);
+        return false;
+    }
+    return true;
+}
+
+static bool private_trailing_click_ignored(const char *state,
+                                           werewolf_ui_action_t *action)
+{
+    if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                               WEREWOLF_UI_KEY_EVENT_CLICK, action)) {
+        fprintf(stderr, "Long-press trailing CLICK emitted action: %s\n",
+                state);
         return false;
     }
     return true;
@@ -1085,59 +1209,200 @@ static bool apply_state_events(werewolf_ui_model_t *model, const char *state)
     }
 
     if (strcmp(state, "role-revealed") == 0 ||
-        strcmp(state, "role-release") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_PRESS, &action);
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_LONG, &action);
-        if (werewolf_ui_take_feedback() !=
-            WEREWOLF_UI_FEEDBACK_PRIVATE_REVEAL) {
-            fprintf(stderr, "Role reveal feedback mismatch: %s\n", state);
+        strcmp(state, "role-revealed-villager") == 0 ||
+        strcmp(state, "role-revealed-guard") == 0) {
+        if (!private_reveal(true, state, &action)) {
             return false;
         }
-    }
-    if (strcmp(state, "role-release") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_RELEASE, &action);
-        if (werewolf_ui_take_feedback() !=
-            WEREWOLF_UI_FEEDBACK_PRIVATE_SEAL) {
-            fprintf(stderr, "Role seal feedback mismatch\n");
+    } else if (strcmp(state, "role-release") == 0 ||
+               strcmp(state, "role-review-ready-villager") == 0) {
+        if (!private_reveal(true, state, &action) ||
+            !private_release(true, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "role-review-again-villager") == 0) {
+        if (!private_reveal(true, state, &action) ||
+            !private_release(true, state, &action) ||
+            !private_reveal(true, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "role-confirm-villager") == 0) {
+        if (!private_reveal(true, state, &action) ||
+            !private_release(true, state, &action) ||
+            !private_short_ok(true, true, model, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "role-click-before-view") == 0) {
+        if (!private_short_ok(true, false, model, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "role-trailing-click") == 0) {
+        if (!private_reveal(true, state, &action) ||
+            !private_release(true, state, &action) ||
+            !private_trailing_click_ignored(state, &action)) {
             return false;
         }
     } else if (strcmp(state, "role-long-unarmed") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_LONG, &action);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_LONG, &action) ||
+            werewolf_ui_take_feedback() != WEREWOLF_UI_FEEDBACK_NONE) {
+            fprintf(stderr, "Unarmed role LONG was accepted\n");
+            return false;
+        }
     } else if (strcmp(state, "role-heartbeat") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_PRESS, &action);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_PRESS, &action)) {
+            fprintf(stderr, "Role PRESS emitted before heartbeat\n");
+            return false;
+        }
         ++model->revision;
         werewolf_ui_set_model(model);
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_LONG, &action);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_LONG, &action) ||
+            werewolf_ui_take_feedback() !=
+                WEREWOLF_UI_FEEDBACK_PRIVATE_REVEAL) {
+            fprintf(stderr, "Heartbeat cancelled an armed role reveal\n");
+            return false;
+        }
     } else if (strcmp(state, "role-private-epoch-changed") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_PRESS, &action);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_PRESS, &action)) {
+            fprintf(stderr, "Role PRESS emitted before epoch change\n");
+            return false;
+        }
         ++model->revision;
         ++model->private_epoch;
         werewolf_ui_set_model(model);
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_LONG, &action);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_LONG, &action) ||
+            werewolf_ui_take_feedback() != WEREWOLF_UI_FEEDBACK_NONE) {
+            fprintf(stderr, "Epoch change did not cancel armed role reveal\n");
+            return false;
+        }
+    } else if (strcmp(state, "role-heartbeat-release") == 0) {
+        if (!private_reveal(true, state, &action) ||
+            !private_release(true, state, &action)) {
+            return false;
+        }
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_PRESS, &action)) {
+            fprintf(stderr, "Role DONE PRESS emitted before heartbeat\n");
+            return false;
+        }
+        ++model->revision;
+        werewolf_ui_set_model(model);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_RELEASE, &action)) {
+            fprintf(stderr,
+                    "Role DONE RELEASE emitted after heartbeat\n");
+            return false;
+        }
+        ++model->revision;
+        werewolf_ui_set_model(model);
+        if (!werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                    WEREWOLF_UI_KEY_EVENT_CLICK, &action) ||
+            action.type != WEREWOLF_UI_ACTION_ROLE_SEEN ||
+            !werewolf_ui_action_matches_model(&action, model) ||
+            werewolf_ui_take_feedback() !=
+                WEREWOLF_UI_FEEDBACK_CONFIRMED) {
+            fprintf(stderr, "Heartbeat dropped armed role DONE\n");
+            return false;
+        }
+    } else if (strcmp(state, "role-private-epoch-release") == 0) {
+        if (!private_reveal(true, state, &action) ||
+            !private_release(true, state, &action)) {
+            return false;
+        }
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_PRESS, &action)) {
+            fprintf(stderr, "Role DONE PRESS emitted before epoch change\n");
+            return false;
+        }
+        ++model->revision;
+        ++model->private_epoch;
+        werewolf_ui_set_model(model);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_RELEASE, &action) ||
+            werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_CLICK, &action) ||
+            werewolf_ui_take_feedback() != WEREWOLF_UI_FEEDBACK_NONE) {
+            fprintf(stderr, "Epoch change retained stale role DONE state\n");
+            return false;
+        }
     } else if (strcmp(state, "private-good") == 0 ||
                strcmp(state, "private-good-no-pending") == 0 ||
                strcmp(state, "private-no-result") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_PRESS, &action);
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_LONG, &action);
-        if (werewolf_ui_take_feedback() != WEREWOLF_UI_FEEDBACK_NONE) {
-            fprintf(stderr, "Private result must stay silent\n");
+        if (!private_reveal(false, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "private-review-ready") == 0) {
+        if (!private_reveal(false, state, &action) ||
+            !private_release(false, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "private-review-again") == 0) {
+        if (!private_reveal(false, state, &action) ||
+            !private_release(false, state, &action) ||
+            !private_reveal(false, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "private-confirm") == 0) {
+        if (!private_reveal(false, state, &action) ||
+            !private_release(false, state, &action) ||
+            !private_short_ok(false, true, model, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "private-click-before-view") == 0) {
+        if (!private_short_ok(false, false, model, state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "private-trailing-click") == 0) {
+        if (!private_reveal(false, state, &action) ||
+            !private_release(false, state, &action) ||
+            !private_trailing_click_ignored(state, &action)) {
+            return false;
+        }
+    } else if (strcmp(state, "private-heartbeat") == 0) {
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_PRESS, &action)) {
+            fprintf(stderr, "Private-result PRESS emitted before heartbeat\n");
+            return false;
+        }
+        ++model->revision;
+        werewolf_ui_set_model(model);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_LONG, &action) ||
+            werewolf_ui_take_feedback() != WEREWOLF_UI_FEEDBACK_NONE) {
+            fprintf(stderr,
+                    "Heartbeat cancelled an armed private-result reveal\n");
+            return false;
+        }
+    } else if (strcmp(state, "private-epoch-changed") == 0) {
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_PRESS, &action)) {
+            fprintf(stderr,
+                    "Private-result PRESS emitted before epoch change\n");
+            return false;
+        }
+        ++model->revision;
+        ++model->private_epoch;
+        werewolf_ui_set_model(model);
+        if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_LONG, &action) ||
+            werewolf_ui_take_feedback() != WEREWOLF_UI_FEEDBACK_NONE) {
+            fprintf(stderr,
+                    "Epoch change did not cancel private-result reveal\n");
             return false;
         }
     } else if (strcmp(state, "private-waiting") == 0) {
         if (werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
                                    WEREWOLF_UI_KEY_EVENT_PRESS, &action) ||
             werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                   WEREWOLF_UI_KEY_EVENT_LONG, &action)) {
+                                   WEREWOLF_UI_KEY_EVENT_LONG, &action) ||
+            werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_RELEASE, &action) ||
+            werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
+                                   WEREWOLF_UI_KEY_EVENT_CLICK, &action)) {
             fprintf(stderr, "Waiting private page accepted input\n");
             return false;
         }
@@ -1193,28 +1458,6 @@ static bool apply_state_events(werewolf_ui_model_t *model, const char *state)
             fprintf(stderr, "Vote navigation feedback mismatch\n");
             return false;
         }
-    } else if (strcmp(state, "role-heartbeat-release") == 0 ||
-               strcmp(state, "role-private-epoch-release") == 0) {
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_PRESS, &action);
-        (void)werewolf_ui_handle_key(WEREWOLF_UI_KEY_OK,
-                                     WEREWOLF_UI_KEY_EVENT_LONG, &action);
-        bool emitted = werewolf_ui_handle_key(
-            WEREWOLF_UI_KEY_OK, WEREWOLF_UI_KEY_EVENT_RELEASE, &action);
-        ++model->revision;
-        if (strcmp(state, "role-private-epoch-release") == 0) {
-            ++model->private_epoch;
-        }
-        bool matches = werewolf_ui_action_matches_model(&action, model);
-        bool expected = strcmp(state, "role-heartbeat-release") == 0;
-        if (!emitted || matches != expected) {
-            fprintf(stderr,
-                    "Private action context check failed: state=%s "
-                    "emitted=%d matches=%d expected=%d\n",
-                    state, emitted, matches, expected);
-            return false;
-        }
-        werewolf_ui_set_model(model);
     }
     return true;
 }

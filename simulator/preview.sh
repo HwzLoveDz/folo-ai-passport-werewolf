@@ -26,7 +26,10 @@ states=(
     lobby-nickname-limit lobby-nickname-exact
     room-closed-guest room-closed-from-wolf room-closed-from-seer
     kicked-guest kicked-from-wolf kicked-from-seer
-    role-sealed-wolf role-sealed-seer role-revealed role-release
+    role-sealed-wolf role-sealed-seer role-revealed
+    role-revealed-villager role-revealed-guard
+    role-release role-review-ready-villager role-review-again-villager
+    role-confirm-villager role-click-before-view role-trailing-click
     role-long-unarmed role-heartbeat role-private-epoch-changed
     role-heartbeat-release role-private-epoch-release
     night-select night-confirm night-waiting night-known-dead
@@ -34,7 +37,9 @@ states=(
     private-sealed-good-no-pending private-good-no-pending
     private-sealed-good-no-known-dead
     private-sealed-good-local-pending private-sealed-good-no-local-pending
-    private-no-result private-waiting
+    private-no-result private-review-ready private-review-again
+    private-confirm private-click-before-view private-trailing-click
+    private-heartbeat private-epoch-changed private-waiting
     day-result speaking vote-select vote-confirm eliminated game-over
     status-self-dead status-self-host-dead reconnecting connection-disconnected
     connection-host-lost error-recoverable error error-connection
@@ -79,19 +84,44 @@ cmp "${OUTPUT_DIR}/candidate-lobby-host-exit-returned.png" \
 cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
     "${OUTPUT_DIR}/candidate-role-sealed-seer.png"
 cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
-    "${OUTPUT_DIR}/candidate-role-release.png"
-cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
     "${OUTPUT_DIR}/candidate-role-long-unarmed.png"
+cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
+    "${OUTPUT_DIR}/candidate-role-click-before-view.png"
 cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
     "${OUTPUT_DIR}/candidate-role-private-epoch-changed.png"
 cmp "${OUTPUT_DIR}/candidate-role-revealed.png" \
     "${OUTPUT_DIR}/candidate-role-heartbeat.png"
-cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
+cmp "${OUTPUT_DIR}/candidate-role-release.png" \
+    "${OUTPUT_DIR}/candidate-role-review-ready-villager.png"
+cmp "${OUTPUT_DIR}/candidate-role-release.png" \
+    "${OUTPUT_DIR}/candidate-role-trailing-click.png"
+cmp "${OUTPUT_DIR}/candidate-role-revealed-villager.png" \
+    "${OUTPUT_DIR}/candidate-role-review-again-villager.png"
+cmp "${OUTPUT_DIR}/candidate-role-confirm-villager.png" \
     "${OUTPUT_DIR}/candidate-role-heartbeat-release.png"
 cmp "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
     "${OUTPUT_DIR}/candidate-role-private-epoch-release.png"
 cmp "${OUTPUT_DIR}/candidate-private-sealed-wolf.png" \
     "${OUTPUT_DIR}/candidate-private-sealed-good.png"
+cmp "${OUTPUT_DIR}/candidate-private-sealed-good.png" \
+    "${OUTPUT_DIR}/candidate-private-click-before-view.png"
+cmp "${OUTPUT_DIR}/candidate-private-sealed-good.png" \
+    "${OUTPUT_DIR}/candidate-private-epoch-changed.png"
+cmp "${OUTPUT_DIR}/candidate-private-good.png" \
+    "${OUTPUT_DIR}/candidate-private-review-again.png"
+cmp "${OUTPUT_DIR}/candidate-private-good.png" \
+    "${OUTPUT_DIR}/candidate-private-heartbeat.png"
+cmp "${OUTPUT_DIR}/candidate-private-review-ready.png" \
+    "${OUTPUT_DIR}/candidate-private-trailing-click.png"
+cmp "${OUTPUT_DIR}/candidate-private-confirm.png" \
+    "${OUTPUT_DIR}/candidate-private-waiting.png"
+if cmp -s "${OUTPUT_DIR}/candidate-role-sealed-wolf.png" \
+          "${OUTPUT_DIR}/candidate-role-release.png" ||
+   cmp -s "${OUTPUT_DIR}/candidate-role-revealed-villager.png" \
+          "${OUTPUT_DIR}/candidate-role-review-ready-villager.png"; then
+    printf 'Private review-ready prompt did not render distinctly\n' >&2
+    exit 1
+fi
 cmp "${OUTPUT_DIR}/candidate-room-closed-from-wolf.png" \
     "${OUTPUT_DIR}/candidate-room-closed-from-seer.png"
 cmp "${OUTPUT_DIR}/candidate-kicked-from-wolf.png" \

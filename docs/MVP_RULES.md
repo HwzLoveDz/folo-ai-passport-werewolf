@@ -10,8 +10,9 @@ core, UI and network protocol must not silently introduce alternative rules.
 - Roles are shuffled from an explicit 64-bit seed so host tests can reproduce
   a deck deterministically. The MVP does not persist or export a real-game
   event log because that log would also need a separate privacy design.
-- A player sees only their own role. Wolves additionally see the other Wolf's
-  seat. The Seer sees faction only, never the exact good role.
+- During an active game, a player sees only their own role. Wolves additionally
+  see the other Wolf's seat. The Seer sees faction only, never the exact good
+  role. The complete validated deck appears only in the final role review.
 
 ## Lobby and start
 
@@ -52,11 +53,14 @@ automatically expire a phase; it waits for every required action.
 - If only one Wolf remains alive, that Wolf's valid target is the kill candidate.
 - If both Wolves select the same target, that seat is the kill candidate.
 - If they disagree, every living player receives the same reselection UI and
-  submits another fixed-size action. If the Wolves still disagree, the Wolves
-  make no kill that night.
+  submits another fixed-size action. Only the Wolves' second targets affect the
+  renewed consensus; every non-Wolf action is cover traffic. If the Wolves still
+  disagree, the Wolves make no kill that night.
 - The Guard may protect any living player, including themself, but may not
   protect the same seat on consecutive nights.
 - The Seer selects any other living player and privately receives Wolf or Good.
+- A Seer killed by that night's resolution receives no new result from that
+  night; dead players do not learn additional private information.
 - Guard protection cancels the Wolf kill. Death is announced by seat only; the
   role remains hidden until the end-of-game role review.
 
@@ -67,10 +71,12 @@ automatically expire a phase; it waits for every required action.
   timeout adjudication. Speech is not recorded or analysed.
 - Each living player privately votes for one other living player.
 - A unique top vote exiles that player.
-- A first-place tie starts one defence/revote round restricted to tied seats.
+- A first-place tie starts one defence round for the tied players. Every living
+  player then votes again, but the revote targets are restricted to tied seats.
 - If the revote is tied, nobody is exiled that day.
-- Dead players retain the public view but cannot act, speak through the timer,
-  vote or inspect any additional secret.
+- While the game remains active, dead players retain the public view but cannot
+  act, speak through the timer, vote or inspect any additional secret. The
+  complete deck becomes public to every device only at final review.
 
 ## Input and privacy
 
@@ -80,16 +86,25 @@ automatically expire a phase; it waits for every required action.
   single dangerous short-OK exception is the explicit red `KICK PLAYER` item
   in a target player's detail menu, whose default focus is `BACK`. See
   `docs/CONTROLS.md` for page-specific behavior.
-- In a joined client lobby, long `DOWN` immediately starts the reliable leave
+- In an `ONLINE` client Lobby, long `DOWN` immediately starts the reliable leave
   request; there is no second leave dialog. The link remains alive while the
-  request drains to ACK or its bounded deadline.
-- Hold OK to reveal a private role; releasing OK hides it immediately.
+  request drains to ACK or its bounded deadline. `RECONNECTING` currently locks
+  this input until recovery or bounded Host-loss handling.
+- Hold OK to reveal a private role or result; releasing OK hides it immediately
+  without acknowledging it. The player may repeat that hold/release cycle as
+  often as needed. After at least one valid reveal, a separate short OK submits
+  `ROLE_SEEN` or `ACK_RESULT`; the trailing click of a long press is never a
+  submission.
 - UP/DOWN changes a game target. Submitting that target requires an explicit
   hold to confirm; a click never commits a game action. Direct single-player
   kick remains the documented detail-menu exception above.
 - Private phases use identical brightness, animation, UI structure and sound
   policy for all roles. No role-specific sound, vibration or backlight pattern
   is permitted. Actual wall-clock duration depends on player input in this MVP.
+- Private reveal and completion eligibility are bound to the current page and
+  gate epoch. A page/epoch change, disconnect, or input disable seals the screen
+  and clears that local state fail-closed; a same-gate heartbeat does not cancel
+  a valid hold or the ability to review again.
 - Room discovery may use broadcast. Roles, teammates, targets, votes and Seer
   results must use encrypted unicast and must never appear in release logs.
 
@@ -101,4 +116,9 @@ automatically expire a phase; it waits for every required action.
   in this MVP. Either event aborts the current game and requires a new room.
 - Permanent loss of the host aborts the MVP game. Automatic host migration is
   explicitly outside this release.
+- An active-game Guest who voluntarily leaves or remains permanently lost also
+  aborts the game; an occupied seat cannot be replaced mid-game. Once
+  `GAME_OVER` and the complete role deck have reached the review screen, a Guest
+  may leave without invalidating the static review retained by the remaining
+  devices.
 - An invalid, stale, duplicate or out-of-phase action never advances the game.

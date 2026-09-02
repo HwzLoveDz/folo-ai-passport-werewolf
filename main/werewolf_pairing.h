@@ -154,11 +154,12 @@ ww_pairing_status_t ww_pairing_kdf(
     char verification_code[WW_PAIRING_VERIFY_CODE_TEXT_SIZE]);
 
 /*
- * Derive the ESP-NOW PMK shared by every device in one room.  ESP-NOW
- * requires sender and receiver PMKs to match even though the peer-specific
- * LMK is the key that protects action frames.  The room PMK is therefore a
- * versioned wrapping key derived from public room identity; confidentiality
- * and peer authentication remain provided by the secret X25519 LMKs above.
+ * Derive the room-scoped ESP-NOW PMK configured by every device in one room.
+ * ESP-NOW uses each device's PMK to wrap its LMKs; encrypted peers must
+ * install the same peer-specific LMK, but their PMKs are not an on-air shared
+ * secret requirement.  This project derives the PMK from public room identity
+ * to avoid the SDK default or a compiled constant.  Confidentiality and peer
+ * authentication remain provided by the secret X25519-derived LMKs above.
  */
 ww_pairing_status_t ww_pairing_derive_room_pmk(
     uint64_t session_id,

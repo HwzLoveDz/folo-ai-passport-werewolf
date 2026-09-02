@@ -13,6 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "werewolf_game.h"
 #include "werewolf_identity.h"
@@ -95,6 +96,13 @@ typedef struct {
         } audio;
     } body;
 } app_event_t;
+
+typedef struct {
+    uint32_t revision;
+    werewolf_ui_public_phase_t public_phase;
+    werewolf_ui_connection_t connection;
+    werewolf_ui_error_t error;
+} app_ui_status_snapshot_t;
 
 typedef enum {
     APP_STATE_MODE,
@@ -272,7 +280,11 @@ static bool s_input_event_lost;
 static werewolf_ui_deferred_release_t s_deferred_private_release;
 static werewolf_ui_deferred_release_t s_deferred_ui_rollback;
 static werewolf_ui_deferred_release_t s_deferred_ui_model;
+static StaticSemaphore_t s_ui_snapshot_mutex_buffer;
+static SemaphoreHandle_t s_ui_snapshot_mutex;
+static werewolf_ui_model_t s_ui_snapshot;
 static bool s_sound_snapshot_valid;
+static uint32_t s_sound_snapshot_revision;
 static werewolf_ui_public_phase_t s_sound_public_phase;
 static werewolf_ui_connection_t s_sound_connection;
 static werewolf_ui_error_t s_sound_error;
@@ -610,48 +622,61 @@ static werewolf_ui_public_phase_t ui_public_phase(void)
     }
 }
 
-static void announce_ui_status(void)
+static void announce_ui_status(const app_ui_status_snapshot_t *status)
 {
     werewolf_sound_cue_t cue = WEREWOLF_SOUND_COUNT;
 
+    if (status == NULL || s_ui_snapshot_mutex == NULL ||
+        xSemaphoreTake(s_ui_snapshot_mutex, portMAX_DELAY) != pdTRUE) {
+        return;
+    }
+    if (s_sound_snapshot_valid &&
+        (int32_t)(status->revision - s_sound_snapshot_revision) < 0) {
+        (void)xSemaphoreGive(s_ui_snapshot_mutex);
+        return;
+    }
     if (s_sound_snapshot_valid) {
-        bool phase_changed = s_sound_public_phase != s_app.ui.public_phase;
-        bool connection_changed = s_sound_connection != s_app.ui.connection;
+        bool phase_changed =
+            s_sound_public_phase != status->public_phase;
+        bool connection_changed =
+            s_sound_connection != status->connection;
 
         if ((phase_changed &&
-             s_app.ui.public_phase == WEREWOLF_UI_PUBLIC_PHASE_ERROR) ||
-            (s_app.ui.error != WEREWOLF_UI_ERROR_NONE &&
-             s_sound_error != s_app.ui.error)) {
+             status->public_phase == WEREWOLF_UI_PUBLIC_PHASE_ERROR) ||
+            (status->error != WEREWOLF_UI_ERROR_NONE &&
+             s_sound_error != status->error)) {
             cue = WEREWOLF_SOUND_ERROR;
         } else if (phase_changed &&
-                   s_app.ui.public_phase ==
+                   status->public_phase ==
                        WEREWOLF_UI_PUBLIC_PHASE_GAME_OVER) {
             cue = WEREWOLF_SOUND_GAME_OVER;
         } else if (connection_changed &&
-                   s_app.ui.connection != WEREWOLF_UI_CONNECTION_ONLINE &&
+                   status->connection != WEREWOLF_UI_CONNECTION_ONLINE &&
                    s_sound_connection == WEREWOLF_UI_CONNECTION_ONLINE) {
             cue = WEREWOLF_SOUND_DISCONNECTED;
         } else if (connection_changed &&
-                   s_app.ui.connection == WEREWOLF_UI_CONNECTION_ONLINE &&
+                   status->connection == WEREWOLF_UI_CONNECTION_ONLINE &&
                    s_sound_connection != WEREWOLF_UI_CONNECTION_ONLINE) {
             cue = WEREWOLF_SOUND_CONNECTED;
         } else if (phase_changed &&
-                   (s_app.ui.public_phase ==
+                   (status->public_phase ==
                         WEREWOLF_UI_PUBLIC_PHASE_DAWN ||
-                    s_app.ui.public_phase ==
+                    status->public_phase ==
                         WEREWOLF_UI_PUBLIC_PHASE_EXILE)) {
             cue = WEREWOLF_SOUND_RESULT;
         } else if (phase_changed &&
-                   s_app.ui.public_phase != WEREWOLF_UI_PUBLIC_PHASE_MODE &&
-                   s_app.ui.public_phase != WEREWOLF_UI_PUBLIC_PHASE_LOBBY) {
+                   status->public_phase != WEREWOLF_UI_PUBLIC_PHASE_MODE &&
+                   status->public_phase != WEREWOLF_UI_PUBLIC_PHASE_LOBBY) {
             cue = WEREWOLF_SOUND_PHASE;
         }
     }
 
     s_sound_snapshot_valid = true;
-    s_sound_public_phase = s_app.ui.public_phase;
-    s_sound_connection = s_app.ui.connection;
-    s_sound_error = s_app.ui.error;
+    s_sound_snapshot_revision = status->revision;
+    s_sound_public_phase = status->public_phase;
+    s_sound_connection = status->connection;
+    s_sound_error = status->error;
+    (void)xSemaphoreGive(s_ui_snapshot_mutex);
     if (cue != WEREWOLF_SOUND_COUNT) {
         werewolf_sound_play(cue);
     }
@@ -722,9 +747,46 @@ static void fill_player_models(void)
     }
 }
 
+static bool stage_ui_snapshot(bool request_apply)
+{
+    if (s_ui_snapshot_mutex == NULL ||
+        xSemaphoreTake(s_ui_snapshot_mutex, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+    /* Publish intent before copying while the mutex is held. A button task
+     * that preempts here claims the sticky flag, then blocks on this mutex
+     * until the complete immutable snapshot is ready. */
+    if (request_apply) {
+        werewolf_ui_deferred_release_request(&s_deferred_ui_model);
+    }
+    memcpy(&s_ui_snapshot, &s_app.ui, sizeof(s_ui_snapshot));
+    (void)xSemaphoreGive(s_ui_snapshot_mutex);
+    return true;
+}
+
+/* Caller owns the LVGL lock. The snapshot mutex is never held while the
+ * controller waits for LVGL, so this lock order cannot deadlock. */
+static bool apply_ui_snapshot_locked(app_ui_status_snapshot_t *status)
+{
+    if (s_ui_snapshot_mutex == NULL ||
+        xSemaphoreTake(s_ui_snapshot_mutex, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+    werewolf_ui_set_model(&s_ui_snapshot);
+    if (status != NULL) {
+        status->revision = s_ui_snapshot.revision;
+        status->public_phase = s_ui_snapshot.public_phase;
+        status->connection = s_ui_snapshot.connection;
+        status->error = s_ui_snapshot.error;
+    }
+    (void)xSemaphoreGive(s_ui_snapshot_mutex);
+    return true;
+}
+
 static void publish_ui_snapshot(bool advance_revision)
 {
     bool model_applied = false;
+    app_ui_status_snapshot_t status = { 0 };
 
     s_app.ui.public_phase = ui_public_phase();
     s_app.visible_alive_mask = werewolf_ui_update_visible_alive_mask(
@@ -746,16 +808,21 @@ static void publish_ui_snapshot(bool advance_revision)
             s_app.ui.revision = 1U;
         }
     }
-    werewolf_ui_deferred_release_request(&s_deferred_ui_model);
+    if (!stage_ui_snapshot(true)) {
+        ESP_LOGE(TAG, "unable to stage UI snapshot");
+        return;
+    }
     if (bsp_lvgl_lock(100)) {
         if (werewolf_ui_deferred_release_claim(&s_deferred_ui_model, true)) {
-            werewolf_ui_set_model(&s_app.ui);
-            model_applied = true;
+            model_applied = apply_ui_snapshot_locked(&status);
+            if (!model_applied) {
+                werewolf_ui_deferred_release_request(&s_deferred_ui_model);
+            }
         }
         bsp_lvgl_unlock();
     }
     if (model_applied) {
-        announce_ui_status();
+        announce_ui_status(&status);
     }
 }
 
@@ -2118,6 +2185,8 @@ static void show_role_page(void)
             &s_app.private_state, WEREWOLF_GATE_ROLE,
             s_app.gate_epoch);
     s_app.ui.page = WEREWOLF_UI_PAGE_ROLE;
+    s_app.ui.waiting_for_players = s_app.gate == APP_GATE_ROLE &&
+                                   s_app.gate_acknowledged;
     s_app.ui.input_enabled = material_ready && !s_app.reconnecting &&
                              s_app.gate == APP_GATE_ROLE &&
                              !s_app.gate_acknowledged;
@@ -4203,9 +4272,8 @@ static bool process_sticky_failure_flags(void)
 
 static void process_deferred_ui_work(void)
 {
-    werewolf_ui_action_t action = { 0 };
-    bool have_action = false;
     bool model_applied = false;
+    app_ui_status_snapshot_t status = { 0 };
     werewolf_ui_feedback_t feedback = WEREWOLF_UI_FEEDBACK_NONE;
     bool release_pending = werewolf_ui_deferred_release_pending(
         &s_deferred_private_release);
@@ -4222,17 +4290,22 @@ static void process_deferred_ui_work(void)
      * closes private input before a delayed release is interpreted; an
      * unchanged private gate instead gives that release the current revision. */
     if (werewolf_ui_deferred_release_claim(&s_deferred_ui_model, true)) {
-        werewolf_ui_set_model(&s_app.ui);
-        model_applied = true;
+        model_applied = apply_ui_snapshot_locked(&status);
+        if (!model_applied) {
+            werewolf_ui_deferred_release_request(&s_deferred_ui_model);
+            werewolf_ui_hide_private();
+            bsp_lvgl_unlock();
+            return;
+        }
     }
     if (werewolf_ui_deferred_release_claim(
             &s_deferred_private_release, true)) {
-        /* handle_private_key hides and renders before returning its action;
-         * the explicit hide is a fail-closed backstop for any page change. */
-        have_action = werewolf_ui_handle_key(
-            WEREWOLF_UI_KEY_OK, WEREWOLF_UI_KEY_EVENT_RELEASE, &action);
+        /* RELEASE itself is the fail-closed seal.  Do not follow it with
+         * hide_private(): a short RELEASE may have armed the later CLICK that
+         * explicitly completes this private gate. */
+        (void)werewolf_ui_handle_key(
+            WEREWOLF_UI_KEY_OK, WEREWOLF_UI_KEY_EVENT_RELEASE, NULL);
         feedback = werewolf_ui_take_feedback();
-        werewolf_ui_hide_private();
     }
     if (werewolf_ui_deferred_release_claim(
             &s_deferred_ui_rollback, true)) {
@@ -4240,10 +4313,7 @@ static void process_deferred_ui_work(void)
     }
     bsp_lvgl_unlock();
     if (model_applied) {
-        announce_ui_status();
-    }
-    if (have_action) {
-        process_ui_action(&action);
+        announce_ui_status(&status);
     }
     play_ui_feedback(feedback);
 }
@@ -4599,6 +4669,7 @@ esp_err_t werewolf_app_start(void)
     (void)werewolf_identity_load(s_app.local_nickname, s_app.local_mac);
     ESP_LOGI(TAG, "local nickname: %s", s_app.local_nickname);
     s_sound_snapshot_valid = false;
+    s_sound_snapshot_revision = 0U;
     s_sound_public_phase = WEREWOLF_UI_PUBLIC_PHASE_MODE;
     s_sound_connection = WEREWOLF_UI_CONNECTION_RADIO_OFF;
     s_sound_error = WEREWOLF_UI_ERROR_NONE;
@@ -4616,6 +4687,13 @@ esp_err_t werewolf_app_start(void)
                    s_app.local_nickname);
     s_app.last_signal_refresh_ms = app_now_ms();
     s_app.ui.input_enabled = true;
+    if (s_ui_snapshot_mutex == NULL) {
+        s_ui_snapshot_mutex =
+            xSemaphoreCreateMutexStatic(&s_ui_snapshot_mutex_buffer);
+    }
+    if (s_ui_snapshot_mutex == NULL || !stage_ui_snapshot(false)) {
+        return ESP_ERR_NO_MEM;
+    }
     if (s_queue == NULL) {
         s_queue = xQueueCreateStatic(APP_QUEUE_DEPTH, sizeof(app_event_t),
                                      s_queue_storage, &s_queue_buffer);
@@ -4665,6 +4743,10 @@ void werewolf_app_handle_button(bsp_btn_t button, bsp_btn_ev_t event)
     werewolf_ui_action_t action = { 0 };
     bool have_action;
     bool action_queued = false;
+    bool model_applied = false;
+    app_ui_status_snapshot_t status = { 0 };
+    werewolf_ui_feedback_t deferred_feedback =
+        WEREWOLF_UI_FEEDBACK_NONE;
     werewolf_ui_feedback_t feedback = WEREWOLF_UI_FEEDBACK_NONE;
     app_event_t app_event = { .kind = APP_EVENT_UI };
 
@@ -4679,24 +4761,38 @@ void werewolf_app_handle_button(bsp_btn_t button, bsp_btn_ev_t event)
         }
         return;
     }
-    if (werewolf_ui_deferred_release_pending(&s_deferred_ui_model)) {
-        /* The controller has a newer fail-closed model that could not yet be
-         * rendered.  Never interpret an input against the stale screen (a
-         * delayed LONG could otherwise reveal a role after disconnect).  A
-         * physical release still hides immediately and is retried after the
-         * controller snapshot is applied. */
-        if (key == WEREWOLF_UI_KEY_OK &&
-            key_event == WEREWOLF_UI_KEY_EVENT_RELEASE) {
+    /* Apply the latest controller snapshot before interpreting input.  A
+     * same-gate heartbeat preserves the private press/review state; a page,
+     * epoch, link, or input-gate change clears it before LONG/CLICK can act. */
+    if (werewolf_ui_deferred_release_claim(&s_deferred_ui_model, true)) {
+        model_applied = apply_ui_snapshot_locked(&status);
+        if (!model_applied) {
+            werewolf_ui_deferred_release_request(&s_deferred_ui_model);
             werewolf_ui_hide_private();
-            werewolf_ui_deferred_release_request(
-                &s_deferred_private_release);
+            bsp_lvgl_unlock();
+            return;
         }
-        bsp_lvgl_unlock();
-        return;
+    }
+    /* A physical RELEASE that missed the LVGL lock belongs before every later
+     * input event.  Draining it here both seals stale pixels before a new
+     * PRESS and lets the matching delayed CLICK complete a valid short OK. */
+    if (werewolf_ui_deferred_release_claim(
+            &s_deferred_private_release, true)) {
+        (void)werewolf_ui_handle_key(
+            WEREWOLF_UI_KEY_OK, WEREWOLF_UI_KEY_EVENT_RELEASE, &action);
+        deferred_feedback = werewolf_ui_take_feedback();
+    }
+    if (werewolf_ui_deferred_release_claim(
+            &s_deferred_ui_rollback, true)) {
+        werewolf_ui_cancel_pending_action();
     }
     have_action = werewolf_ui_handle_key(key, key_event, &action);
     feedback = werewolf_ui_take_feedback();
     bsp_lvgl_unlock();
+    if (model_applied) {
+        announce_ui_status(&status);
+    }
+    play_ui_feedback(deferred_feedback);
     if (have_action) {
         app_event.body.ui = action;
         if (xQueueSend(s_queue, &app_event, 0U) != pdTRUE) {

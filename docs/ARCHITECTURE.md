@@ -3,9 +3,10 @@
 ## Product boundary
 
 The first release is a seven-device, offline, no-phone Werewolf game. One of
-the seven devices is the fixed authority and also belongs to a player. The
-authority owns all roles and game state; the other six devices retain only the
-public state and their own private view.
+the seven devices is the fixed authority and also belongs to a player. During
+an active game, the authority owns all roles and game state; the other six
+devices retain only the public state and their own private view. The validated
+seven-role deck is distributed only for the common review after game over.
 
 AI is deliberately outside the rules engine. A later narrator may turn
 structured events into speech, but it must never choose roles, validate moves,
@@ -14,14 +15,28 @@ cannot block a game.
 
 ## Runtime ownership
 
-- The button component task only translates key edges and queues value actions.
-- The LVGL task renders immutable `werewolf_ui_model_t` snapshots.
+- The button component reports physical key edges to the application callback.
+  Under the LVGL lock, that callback first applies any newly published immutable
+  model, then resolves local UI state/rendering and queues only a value action
+  for the controller.
+- All LVGL access is serialized by the display lock. Controller publication and
+  button handling may apply a complete immutable `werewolf_ui_model_t`; neither
+  path reads a partially updated controller working model.
 - The controller task is the only writer of the session and authoritative game
   state.
 - The ESP-NOW task validates frames, performs ACK/retry/deduplication, and queues
   decoded frames to the controller.
 - ESP-NOW callbacks do no allocation, rendering, game work, or logging of
   payload contents.
+- The static sound task asynchronously consumes non-authoritative UI cues; its
+  private cue policy is role-neutral. The static battery task samples the
+  chip-reported SOC every 30 seconds and exposes fresh, stale, or unavailable
+  local telemetry, never a voltage-derived percentage. Neither task can advance
+  session or game state.
+- NVS persists only the local nickname record and its provisioning revision;
+  optional per-device factory nickname/revision settings seed that record. It
+  does not persist an active room or game checkpoint, and restart/resume is not
+  implemented.
 
 All queues, peer tables, replay windows, game state and UI models have fixed
 capacity. The ESP32-C3 has no PSRAM, so the firmware must not turn packet or
@@ -59,9 +74,12 @@ The handshake for that single offered seat is:
    unicast. The client displays the code beneath `ROOM`; the Host displays the
    matching code only in that guest's selected detail view.
 
-The host creates a new offer key, nonce, and commitment after success, timeout,
-cancellation, or player removal; a client also creates fresh material for a new
-attempt. The host never reuses revealed material for another seat or candidate.
+The Host creates fresh offer material when opening a room and rotates it after
+each successful pairing, each bounded offer timeout, or any Lobby player
+removal/kick. An unpaired client cancellation is not a message to the Host and
+therefore relies on that bounded offer timeout. A client creates fresh material
+for every new attempt. The Host never reuses revealed material for another seat
+or candidate.
 Each endpoint derives its pair values from:
 
 ```text
@@ -75,14 +93,16 @@ X25519 shared secret
   -> peer LMK + six-digit display-only VERIFY code
 ```
 
-ESP-NOW requires both ends of an encrypted link to install the same PMK. Every
-device therefore derives one versioned, room-scoped PMK from the public session
-ID, protocol epoch and room fingerprint. This PMK is a driver wrapping key; the
-secret X25519-derived LMK that protects action frames remains unique to each
-host/client pair. No production key is compiled into the firmware, advertised,
-or printed. Commit/reveal binds fresh key material to one transcript before it
-is disclosed, so an endpoint cannot replace that material after seeing the
-other reveal.
+ESP-NOW uses each device's 16-byte PMK as an AES-128 wrapping key for LMKs;
+encrypted peers require the two endpoints to install the same peer LMK.
+This implementation configures a versioned room-scoped PMK derived from the
+public session ID, protocol epoch and room fingerprint instead of relying on an
+SDK default or compiled constant. Because those inputs are public, the room PMK
+is not claimed as a confidentiality or identity secret. Protection of action
+frames rests on the secret X25519-derived LMK unique to each Host/Guest pair.
+No production key is compiled into the firmware, advertised, or printed.
+Commit/reveal binds fresh key material to one transcript before it is disclosed,
+so an endpoint cannot replace that material after seeing the other reveal.
 
 Protocol v5 has no machine-side confirmation action or persisted confirmation
 state. The locally derived `VERIFY` code is never carried in a packet and never
@@ -175,17 +195,38 @@ gate actions/private payloads are rejected; a not-yet-acknowledged role or
 private-result payload is re-sent by encrypted unicast. This keeps a lost client
 action recoverable without exposing another player's acknowledgement timing.
 
+Role and private-result gates deliberately separate viewing from acknowledgement.
+Holding OK reveals only while the recorded page and private gate epoch still
+match; releasing OK immediately seals the display without sending an action.
+The player may repeat that hold/release cycle as often as needed. Only after at
+least one valid reveal may a later, independent short OK emit `ROLE_SEEN` or
+`ACK_RESULT`. Any click tail generated by the long-press sequence is suppressed.
+Changing page or gate epoch, losing the link, or disabling input clears the
+local reveal and completion eligibility fail-closed; an ordinary same-gate
+heartbeat preserves both an active hold and the ability to review again.
+
 Normal night, speech and vote actions remain locally in-flight until an
 encrypted Host snapshot confirms the local submitted bit, the next speaker, or
 a later phase. If transport retries have settled and a newer snapshot still
 disagrees, input is reopened instead of leaving a permanent UI latch. A Guard's
 previous target is committed only after this authoritative confirmation.
 
-Private OK-release, controller model publication, and UI latch rollback are
-sticky work items. If the LVGL lock or controller queue is temporarily busy,
-the controller retries them on its next tick. Pending controller state also
-blocks keys from being interpreted against an older render, so disconnecting or
-changing phase cannot leave a role visible or accept an obsolete action.
+Private sealing on OK-release, controller model publication, and UI latch
+rollback are sticky work items. If the LVGL lock or controller queue is
+temporarily busy, the controller retries them on its next tick. Pending
+controller state also blocks keys from being interpreted against an older
+render, so disconnecting or changing phase cannot leave a role visible or
+accept an obsolete action.
+
+The controller stages each presentation model under a dedicated snapshot mutex.
+While holding that mutex it first raises the sticky apply intent and then copies
+the complete model. A button callback may claim the intent first, but it must
+then acquire the same mutex and therefore cannot consume a partial copy or miss
+the publication window. It applies that immutable snapshot before any delayed
+release or current key event and never copies the controller's partially updated
+working model. The producer does not wait for LVGL while holding the snapshot
+mutex, preserving lock order. This keeps same-gate holds valid while page,
+epoch, disconnect and input-lock changes remain fail-closed.
 
 The game core independently checks a full 32-bit `phase_epoch`. A transport bug
 or repeated packet therefore cannot advance the rules engine twice.
@@ -202,14 +243,16 @@ or repeated packet therefore cannot advance the rules engine twice.
    players are `READY`, and all six Host-to-client encrypted links are present.
 4. The host shuffles `2 Wolf + Seer + Guard + 3 Villager` from a random 64-bit
    seed and sends each player only their private view.
-5. Every player holds OK to reveal, then releases to hide. Night does not open
-   until all seven devices acknowledge the sealed role page.
+5. Every player may hold OK to reveal and release to hide as often as needed.
+   After viewing at least once, a separate short OK acknowledges the sealed role
+   page. Night does not open until all seven devices acknowledge it.
 6. Every living player uses the same night interaction and fixed-size action.
    Villagers submit a dummy target. Wolves get one structurally identical
    reselection if they disagree. Target seconds are prompts only in the MVP;
    phases do not expire automatically.
-7. Every device receives the same private-result gate. Only the Seer gets a
-   target faction; no exact good role is disclosed.
+7. Every device receives the same private-result gate and uses the same
+   repeat-view-then-short-OK acknowledgement flow. Only the Seer gets a target
+   faction; no exact good role is disclosed.
 8. Dawn result, ordered discussion, secret vote, optional tie/revote, exile,
    and the next night repeat until a win condition is met.
 9. Only after `GAME_OVER` does the host send the strictly validated seven-role
@@ -226,6 +269,12 @@ or repeated packet therefore cannot advance the rules engine twice.
   private input closed.
 - A permanently lost host aborts the current MVP game. There is no automatic
   authority migration.
+- During an active game, an explicit Guest leave or a Guest judged permanently
+  lost after the delivery-failure window makes the Host reliably abort the
+  whole room; seats are never backfilled mid-game. After `GAME_OVER` with no
+  pending review gate, an explicit leave only retires that peer, while retry
+  exhaustion keeps the peer installed so later encrypted review heartbeats can
+  recover it.
 - Host-side fatal termination uses the same ACK-or-deadline drain as a manual
   room close, so the controller does not tear down ESP-NOW immediately after
   queuing abort notices.
@@ -234,22 +283,9 @@ or repeated packet therefore cannot advance the rules engine twice.
 - NVS initialization errors are reported. The firmware must never erase the
   whole NVS partition as automatic recovery.
 
-## Delivery gates
+## Delivery status
 
-1. **Native correctness:** deterministic rules, payload codecs, replay window,
-   retries, pairing KDF, and UI security helpers pass strict host tests; the
-   production UI simulator separately passes deterministic pixel comparisons.
-2. **Single-device firmware:** ESP-IDF 5.5.3 builds for ESP32-C3; buttons,
-   private reveal/release, memory headroom and screen lifecycle are validated.
-3. **Three-device link:** explicit room selection, create/join, independent
-   matching locally derived `VERIFY` displays with no on-wire code, self
-   readiness, `H`/`Y`/`G` badges, targeted kick, voluntary leave/Host close,
-   encrypted peer count, packet loss/retry and host-loss abort are measured on
-   hardware.
-4. **Seven-device full game:** all roles and every tie/revote/win branch are
-   played, with no secret in serial logs or public packets.
-5. **Narrator layer:** optional local audio prompts are added with identical
-   timing for every role. Generative narration remains non-authoritative.
-
-Flashing, RF behavior, discovery range, loss rate, button long-press timing and
-a complete seven-device playthrough cannot be certified by compilation alone.
+The single progress source is [ROADMAP.md](ROADMAP.md). It keeps native,
+firmware, physical-device and privacy-audit evidence separate. Compilation and
+simulator output cannot certify flashing, RF behavior, discovery range, loss
+rate, physical long-press timing, or a complete seven-device playthrough.
