@@ -9,9 +9,12 @@
 当前版本提供可构建、可测试的 MVP 纵向切片。规则由确定性 C 状态机裁决；
 AI 仅保留为未来旁白能力，不参与角色、投票或胜负判定。
 
+> **第一次玩狼人杀？** 从[玩家说明书：快速开局](docs/PLAYER_GUIDE.md)开始。
+> 它只讲如何组队、看身份、完成一轮和判断胜负，不需要先读协议文档。
+
 ## 界面预览
 
-以下画面由生产 LVGL 界面源码直接渲染，覆盖组队、玩家管理与完整游戏流程。
+以下画面由生产 LVGL 界面源码直接渲染，展示组队、玩家管理和游戏流程中的代表性页面。
 
 | 模式选择 | 全员就绪 | 玩家详情 |
 | :---: | :---: | :---: |
@@ -25,22 +28,25 @@ AI 仅保留为未来旁白能力，不参与角色、投票或胜负判定。
 flowchart LR
     P0["P0 · 规则边界<br/>已完成"] --> P1["P1 · 软件纵切<br/>已完成"]
     P1 --> P2["P2 · 实体验收<br/>进行中"]
-    P2 --> P3["P3 · 体验完善<br/>下一阶段"]
+    P2 --> P3["P3 · 体验完善<br/>部分完成"]
     P3 --> P4["P4 · 多游戏平台<br/>未来"]
 
     classDef done fill:#29473F,stroke:#78B39B,color:#F1E8D2,stroke-width:2px;
     classDef active fill:#624817,stroke:#E0AD53,color:#FFF4D6,stroke-width:3px;
+    classDef partial fill:#3B3427,stroke:#B99763,color:#F1E8D2,stroke-width:2px;
     classDef future fill:#181818,stroke:#6F6A60,color:#C9C2B3,stroke-width:1px;
     class P0,P1 done;
     class P2 active;
-    class P3,P4 future;
+    class P3 partial;
+    class P4 future;
     linkStyle default stroke:#6F6A60,stroke-width:2px;
 ```
 
-**当前里程碑：P2 实体设备验收。** 软件纵向切片、主机测试、完整 UI 状态集和
-ESP-IDF 构建已经完成；双机已跑通建房、加入、准备、只读 `VERIFY`、踢出与退房等
-组队主流程。首版发布前仍需完成三机多房间与丢包恢复、七机完整跑局，以及串口和
-空口隐私审计。详细门槛见 [开发路线](docs/ROADMAP.md)。
+**当前里程碑：P2 实体设备验收。** 软件纵向切片、10 项主机测试、100 状态生产 UI
+模拟器和 ESP-IDF 构建门槛已经通过；双机已跑通建房、加入、准备、只读 `VERIFY`、
+踢出与退房等组队主流程。最新的长身份排版和私密信息重复查看已通过主机/模拟器
+验证，仍待重新上板验收。首版发布前还需完成三机多房间与丢包恢复、七机完整跑局，
+以及串口和空口隐私审计。详细门槛见 [开发路线](docs/ROADMAP.md)。
 
 ## 当前功能
 
@@ -63,10 +69,13 @@ ESP-IDF 构建已经完成；双机已跑通建房、加入、准备、只读 `V
 - 狼人全部出局时好人胜；存活狼人数不少于其余存活人数时狼人胜。
 - 死亡角色在游戏结束前不公开。
 
-完整且具约束力的规则见 [docs/MVP_RULES.md](docs/MVP_RULES.md)，协议与安全设计见
+第一次开局请看[玩家说明书](docs/PLAYER_GUIDE.md)。完整且具约束力的规则见
+[docs/MVP_RULES.md](docs/MVP_RULES.md)，协议与安全设计见
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，难度拆解和分阶段交付门槛见
 [docs/ROADMAP.md](docs/ROADMAP.md)，统一三键操作见
-[docs/CONTROLS.md](docs/CONTROLS.md)。
+[docs/CONTROLS.md](docs/CONTROLS.md)。板级事实和上板证据边界见
+[硬件边界与验证指南](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md)，生产 UI 候选图与
+隐私像素断言见[模拟器说明](simulator/README.md)。
 
 ## 操作
 
@@ -84,15 +93,17 @@ ESP-IDF 构建已经完成；双机已跑通建房、加入、准备、只读 `V
   按键确认，也不会产生确认状态；不一致时由客机主动离房，或由房主踢出该客机。
 - Protocol/rules v5 只有在 7 个座位已占用、7 份昵称资料齐全、7 人全部
   `READY`，且房主持有 6 条加密客机链路时才允许长按 `OK` 开局。
-- 客机在大厅长按 `DOWN` 会直接发起可靠离房请求，随即锁定输入并等待 ACK
-  或有界超时，不再增加二次弹窗。房主长按 `DOWN` 打开关闭房间警告；该菜单
+- 客机在连接为 `ONLINE` 的大厅长按 `DOWN` 会直接发起可靠离房请求，随即锁定输入
+  并等待 ACK 或有界超时，不再增加二次弹窗；`RECONNECTING` 期间当前输入锁定，
+  等待恢复或有界 host-loss。房主长按 `DOWN` 打开关闭房间警告；该菜单
   明确提供并默认选中 `BACK`，短按 `OK` 可返回大厅，只有移到 `CLOSE ROOM`
   后长按 `OK` 才执行。
   关闭期间主机会先可靠通知已连接客机，
   客机显示 `ROOM CLOSED`，被单独踢出的客机显示 `REMOVED FROM ROOM`；两种通知
   都只有 `OK` 可返回模式页。客机主动离开、主机关闭房间
   以及主机异常终止都使用同一套可靠终止流程：等待 ACK 或有界超时后才拆除网络会话。
-- 私密页：长按 `OK` 才显示角色或查验结果，松手立即隐藏并确认已查看。
+- 私密页：长按 `OK` 显示角色或查验结果，松手立即封屏且不提交；可以反复查看，
+  确认记住后另短按一次 `OK` 完成。
 - 选择页：`UP/DOWN` 选择座位，单击 `OK` 进入确认，再长按 `OK` 提交。
 - 发言页：当前发言者长按 `OK` 提前结束发言。
 - 终局页单击 `OK` 返回；错误页按界面提示重试或长按 `DOWN` 离开。
@@ -111,8 +122,10 @@ ESP-IDF 构建已经完成；双机已跑通建房、加入、准备、只读 `V
 - 主机每次只开放一个座位，并为每次尝试生成新的 X25519 密钥和随机数；双方先交换
   承诺，再揭示密钥材料，并把会话、座位、MAC、公钥、随机数与承诺绑定到同一份转录。
 - 会话、座位、MAC、双方公钥、随机数和承诺共同绑定 HKDF，得到每个客户端独立的
-  LMK；同房设备从房间身份派生一致的 ESP-NOW PMK。超时、取消、成功
-  或移除玩家后立即轮换配对材料，固件没有硬编码生产密钥。
+  LMK；本实现还让同房设备从公开房间身份派生一致的 ESP-NOW PMK，避免依赖 SDK
+  默认值或固化常量，但不把该 PMK 声称为保密/身份凭据。每次新尝试都使用新配对
+  材料；房主在建房时创建 offer，并在成功配对、offer 超时或大厅玩家被移除/踢出后
+  轮换，未配对客机的取消则由房主的有界 offer 超时收口。固件没有硬编码生产密钥。
 - v5 从双方已有的握手转录和密钥材料本地派生同一六位只读 `VERIFY` 码。码不在包中
   传输，不记录人工确认状态，也不参与 `READY` 或开局门禁；只供双方当面比较。
   一致时可辅助人识别链路两端，不一致时由人离房/踢人。若玩家没有实际比对，系统
@@ -131,8 +144,8 @@ ESP-IDF 构建已经完成；双机已跑通建房、加入、准备、只读 `V
 目标环境为 ESP-IDF 5.5.3、ESP32-C3：
 
 ```bash
-source ../esp-idf-v5.5.3/export.sh
-idf.py set-target esp32c3
+source /path/to/esp-idf-v5.5.3/export.sh  # 替换为本机安装路径
+idf.py set-target esp32c3                 # 首次配置或切换目标时执行
 idf.py build
 ```
 
@@ -155,9 +168,10 @@ WEREWOLF_UI_OUTPUT_DIR=/tmp/werewolf-ui-candidate \
     bash simulator/preview.sh
 ```
 
-模拟器会输出完整状态集，并逐字节验证不同秘密的封闭页相同、松手恢复封闭页、
+当前模拟器会输出 100 个生产 UI 状态，并逐字节验证不同秘密的封闭页相同、松手恢复封闭页、
 无匹配按下或私密 gate epoch 已变化的长按不能揭示秘密；普通心跳不会误取消同一
-私密 gate 内的长按。候选图经确认前不升级为视觉基线。
+私密 gate 内的长按。候选图经视觉确认前不升级为 `current-*` 基线；模拟器确认不等于
+物理屏幕已经验收。
 
 ## 项目结构
 
@@ -181,6 +195,7 @@ main/fonts/kode_mono/      与固件一同编译的 Kode Mono 字体及许可证
 components/bsp/            AI-PASSPORT 显示、三键、音频、电量与共享 I2C BSP
 simulator/                 直接编译生产 UI 的确定性 RGB565 渲染器
 tests/                     Linux 主机测试
+docs/PLAYER_GUIDE*.md      面向玩家的中英文快速上手说明书
 partitions.csv             4 MiB 兼容的 2 MiB factory 分区（无 OTA）
 ```
 

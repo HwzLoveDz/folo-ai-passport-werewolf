@@ -24,10 +24,14 @@
 临时硬件诊断必须在隔离构建或独立分支中完成。诊断代码不能进入生产入口，验证后
 将结论沉淀到 BSP 注释、测试或本指南。
 
+当前仓库尚未登记板卡硬件版本和所参考上游实现的精确 commit。下表因此只能作为
+当前代码快照，不能替代发布前的原理图、实板和来源授权记录。
+
 ## 2. 当前板级事实
 
-唯一代码事实源是 `components/bsp/include/bsp_pins.h`。修改前必须同时核对原理图、
-实板和对应芯片资料。
+引脚和板级外设参数以 `components/bsp/include/bsp_pins.h` 为代码事实源；MCU、
+控制台、LVGL 与内存配置以 `sdkconfig.defaults` 为准；分区布局以 `partitions.csv`
+为准。修改前必须同时核对原理图、实板和对应芯片资料。
 
 | 子系统 | 当前配置 | 关键约束 |
 |---|---|---|
@@ -58,14 +62,17 @@
 
 ## 4. UI 与启动约束
 
-- UI 视觉参考是 Gesture Wand 的克制 FUI 语言：近黑背景、直角 1 px 结构线、语义
-  色、Kode Mono 和整数像素布局；只参考视觉语法，不复制业务。
+- 当前产品视觉基线是 **Eclipse Ledger**：近黑空间、月蚀圆环与单元格、暖纸色文字、
+  克制的琥珀/青色/红色状态色、Kode Mono 和整数像素布局。Gesture Wand 只保留为
+  早期排版与模拟器工程参考，不再作为现行界面基线，也不得复制其业务或页面。
 - 模拟器必须直接编译生产 `werewolf_ui.c` 和固件字体对象。
-- 上板前先运行 `simulator/preview.sh`，审查 240 × 320 RGB565 候选图和隐私态逐字节
-  比较。
+- 上板前先运行 `simulator/preview.sh`，审查从 240 × 320 RGB565 framebuffer 转出的
+  PNG 候选图和隐私态逐字节比较。
 - 面板在产品首帧同步刷新完成前保持黑屏，再开启背光，避免白屏或旧 GRAM 残影。
-- 私密内容必须绑定本次 OK PRESS 的页面和 revision；松手、换页、状态更新、断线或
-  输入关闭立即封闭并清空 label。
+- 私密内容必须绑定本次 `OK PRESS` 的页面和 private gate epoch。松手立即封闭并
+  清空私密 label，但不提交确认；同一 gate 内可重复查看，另一次独立短按 `OK` 才
+  完成。换页、epoch 变化、断线或输入关闭必须 fail closed；普通同 gate heartbeat
+  或 UI revision 更新不得误取消有效按住或复看资格。
 - 不显示没有真实数据源的电量、RSSI、链路图或“AI 状态”。
 
 ## 5. 构建与证据分级
@@ -77,7 +84,7 @@
 ./tests/run_host_tests.sh
 WEREWOLF_UI_OUTPUT_DIR=/tmp/werewolf-ui-candidate \
     bash simulator/preview.sh
-source ../esp-idf-v5.5.3/export.sh
+source /path/to/esp-idf-v5.5.3/export.sh  # 替换为本机安装路径
 idf.py build
 ```
 
@@ -108,7 +115,8 @@ idf.py build
 - 在隔离诊断构建中调用 `bsp_button_read_mv()`；
 - 记录松开及每个键的多次实测电压；
 - 以相邻实测分布的安全中点更新窗口，检查温漂和 USB 供电差异；
-- 验证 OK RELEASE 能立即关闭私密页。
+- 验证 `OK RELEASE` 能立即封闭并清空私密内容，但不离开页面、不提交确认；随后仍可
+  重复查看并以独立短按 `OK` 完成。
 
 ### I2C、音频或电池
 

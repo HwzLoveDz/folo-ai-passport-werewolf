@@ -11,7 +11,8 @@ This repository is the offline multiplayer Werewolf firmware for the ESP32-C3-ba
 - `docs/MVP_RULES.md`: normative seven-player rules and privacy behavior.
 - `docs/CONTROLS.md`: normative three-button semantics and page exceptions.
 - `sdkconfig.defaults`: reproducible target, console, LVGL, and memory defaults.
-- `README.md`: wiring, known hardware traps, and the required on-device acceptance checklist.
+- `README.md`: product overview, current progress, and the required on-device acceptance checklist.
+- `docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md`: hardware evidence boundaries, pin/configuration sources, known board traps, and physical validation methods.
 
 Keep reusable hardware logic in `components/bsp`; keep rules independent from ESP-IDF and LVGL. Network callbacks may only enqueue bounded events. The game task is the sole writer of authoritative state.
 
@@ -25,18 +26,20 @@ Keep reusable hardware logic in `components/bsp`; keep rules independent from ES
   pin mapping, panel/controller initialization, ADC key ladder, shared I2C,
   codec, battery gauge, and other BSP details. Re-verify copied behavior against
   this board and keep it below the application boundary.
-- The Gesture Wand repository is a visual-language reference only. Reuse the
-  restrained FUI proportions, semantic color system, Kode Mono hierarchy, and
-  simulator pattern; do not import gesture, PIN, trace, BLE-link, or other Wand
-  business logic.
-- Firmware work follows the installed `embedded-software-engineer` workflow:
+- The current product-owned visual baseline is **Eclipse Ledger**: near-black
+  space, lunar rings and cells, warm parchment text, restrained amber/teal/red
+  state colors, Kode Mono, and integer-pixel layout. The Gesture Wand repository
+  is only an early workflow/layout reference; do not restore its FUI screens or
+  import gesture, PIN, trace, BLE-link, or other Wand business logic.
+- Firmware work follows the installed `harvey-embedded-engineering` workflow:
   inspect the actual repository/board first, preserve dirty state and build
   caches, render deterministic production-UI screenshots before firmware
   builds, and report host, build, flash, and physical-device evidence as
   separate proof levels.
 - UI changes must compile `main/werewolf_ui.c` in `simulator/`; a second mock UI
-  is not acceptable. Candidate renders stay separate from an approved visual
-  baseline until reviewed.
+  is not acceptable. Candidate renders stay separate from the tracked
+  `current-*` visual baseline until reviewed. Simulator approval and physical
+  panel validation are separate evidence levels.
 - Building never implies permission to flash. Re-enumerate the live port and
   obtain explicit write approval before each device-write step. Erase, eFuse,
   key, or security-state changes need their own explicit authorization.
@@ -61,15 +64,18 @@ Keep reusable hardware logic in `components/bsp`; keep rules independent from ES
 
 ## Build, Test, and Development Commands
 
-Use ESP-IDF 5.5.x:
+Use ESP-IDF 5.5.3:
 
 ```bash
-get_idf553                    # Enter the repository's ESP-IDF 5.5.3 environment
-idf.py set-target esp32c3     # Configure a fresh checkout
-idf.py build                  # Compile firmware and validate dependencies
-idf.py flash monitor          # Only with explicit device-write permission
-idf.py fullclean              # Remove generated build state when configuration is stale
+source /path/to/esp-idf-v5.5.3/export.sh  # Replace with the local install path
+idf.py set-target esp32c3                 # Fresh checkout or target change only
+idf.py build                              # Compile and inspect warnings/size
+idf.py flash monitor                      # Only with explicit device-write permission
 ```
+
+Preserve `build/`, managed-component caches, and local configuration for
+incremental work. Run `idf.py fullclean` only when there is evidence of a
+damaged cache or configuration contamination.
 
 Run `./tests/run_host_tests.sh` before the ESP-IDF build. Treat a clean `idf.py build` as the minimum firmware check, then run every applicable item in the README acceptance checklist on seven real devices.
 
@@ -79,7 +85,7 @@ Write C using four-space indentation and K&R-style braces, following nearby file
 
 ## Testing Guidelines
 
-Before submitting, run the native test suite, build from the repository root, and inspect warnings. On hardware, validate discovery, matching locally derived `VERIFY` displays without on-wire code or confirmation state, all seven occupied/profile/ready states, six encrypted client links, `H`/`Y`/`G` badges, self readiness, targeted kick, all phase transitions, immediate private-screen hiding, reconnect/abort behavior, and a complete seven-player game. For pin, display-rotation, ADC, Wi-Fi, or DMA changes, explicitly record the observed hardware result in the PR. Do not increase LVGL or network allocations without checking ESP32-C3 internal RAM usage; the board has no PSRAM.
+Before submitting, run the native test suite, build from the repository root, and inspect warnings. On hardware, validate discovery, matching locally derived `VERIFY` displays without on-wire code or confirmation state, all seven occupied/profile/ready states, six encrypted client links, `H`/`Y`/`G` badges, self readiness, targeted kick, all phase transitions, private hold-to-reveal, release-to-seal without submission, repeated review, separate short-OK completion, reconnect/abort behavior, and a complete seven-player game. For pin, display-rotation, ADC, Wi-Fi, or DMA changes, explicitly record the observed hardware result in the PR. Do not increase LVGL or network allocations without checking ESP32-C3 internal RAM usage; the board has no PSRAM.
 
 ## Commit & Pull Request Guidelines
 

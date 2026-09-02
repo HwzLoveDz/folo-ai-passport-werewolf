@@ -10,7 +10,7 @@ WEREWOLF_UI_OUTPUT_DIR=/tmp/werewolf-ui-candidate \
 ```
 
 The cached build defaults to `/tmp/werewolf-ui-simulator-build`. Output is a
-deterministic set of 240 x 320 RGB565 PNGs.
+deterministic set of 240 x 320 PNGs generated from an RGB565 framebuffer.
 
 The primary lobby and input candidates are:
 
@@ -58,5 +58,7 @@ reordering is also modeled: a completion remains current if a same-gate
 heartbeat is processed first, but is rejected after the page or private gate
 epoch changes.
 
-These images are candidates, not an approved `current-*` baseline. Promote a
-baseline only after visual review on both the simulator and physical panel.
+`preview.sh` writes `candidate-*` images and never replaces the six tracked
+`current-*` images used by the root README. Promote a candidate only after
+visual review. That promotion records the simulator visual baseline; physical
+panel behavior remains a separate hardware-acceptance result.

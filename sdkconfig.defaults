@@ -30,8 +30,8 @@ CONFIG_LV_COLOR_DEPTH_16=y
 # explicitly. Keep only Montserrat 14 as a fallback for internal/error objects.
 CONFIG_LV_FONT_MONTSERRAT_14=y
 # LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
-# 狼人杀 FUI 的对象树和首帧临时 draw task 会超过 24KB。48KB 与同一
-# 硬件上 gesture-wand FUI 的已验证基线一致，启动时再输出实机峰值和余量。
+# Eclipse Ledger 的对象树和首帧临时 draw task 会超过 24KB。当前保留 48KB
+# 静态池；启动时继续输出实机峰值和余量，任何扩容都需重新核对内部 RAM。
 CONFIG_LV_MEM_SIZE_KILOBYTES=48
 # Eclipse Ledger 使用圆角选中项、弹窗与月蚀圆形遮罩。只启用软件复杂绘制
 # 的圆角遮罩能力，仍不使用渐变、阴影或动画；首帧日志继续监控峰值与余量。

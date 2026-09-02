@@ -6,9 +6,13 @@
 
 The current MVP implements room discovery, secure pairing, readiness, role assignment, night actions, dawn, ordered discussion, secret voting, tie revotes, victory evaluation, and the final reveal. A deterministic C state machine owns the rules. Future AI features may narrate the game, but never decide roles, votes, or winners.
 
+> **New to Werewolf?** Start with the
+> [Beginner Player Guide](docs/PLAYER_GUIDE.en.md). It explains room setup,
+> roles, one complete round, and winning without requiring protocol knowledge.
+
 ## UI Preview
 
-These screens are rendered directly from the production LVGL source and cover room setup, player management, and the complete game flow.
+These screens are rendered directly from the production LVGL source and show representative room, player-management, and game-flow pages.
 
 | Mode Select | All Ready | Player Detail |
 | :---: | :---: | :---: |
@@ -22,25 +26,29 @@ These screens are rendered directly from the production LVGL source and cover ro
 flowchart LR
     P0["P0 · Rules & Scope<br/>Complete"] --> P1["P1 · Software Slice<br/>Complete"]
     P1 --> P2["P2 · Hardware Validation<br/>In Progress"]
-    P2 --> P3["P3 · Experience Polish<br/>Next"]
+    P2 --> P3["P3 · Experience Polish<br/>Partly complete"]
     P3 --> P4["P4 · Multi-game Platform<br/>Future"]
 
     classDef done fill:#29473F,stroke:#78B39B,color:#F1E8D2,stroke-width:2px;
     classDef active fill:#624817,stroke:#E0AD53,color:#FFF4D6,stroke-width:3px;
+    classDef partial fill:#3B3427,stroke:#B99763,color:#F1E8D2,stroke-width:2px;
     classDef future fill:#181818,stroke:#6F6A60,color:#C9C2B3,stroke-width:1px;
     class P0,P1 done;
     class P2 active;
-    class P3,P4 future;
+    class P3 partial;
+    class P4 future;
     linkStyle default stroke:#6F6A60,stroke-width:2px;
 ```
 
-**Current milestone: P2 hardware validation.** The software vertical slice,
-host tests, complete UI state set, and ESP-IDF build are complete. Two-device
-tests cover room creation, joining, readiness, read-only `VERIFY`, targeted
-kick, and room exit. The first release still requires three-device multi-room
-and packet-loss recovery tests, a complete seven-device game, and serial plus
-over-the-air privacy audits. See the [development roadmap](docs/ROADMAP.md) for
-the full acceptance gates.
+**Current milestone: P2 hardware validation.** The software vertical slice, ten
+native tests, the 100-state production UI simulator, and the ESP-IDF build gate
+have passed. Two-device tests cover room creation, joining, readiness, read-only
+`VERIFY`, targeted kick, and room exit. The latest long-role layout and repeated
+private-view flow have native/simulator evidence but still need a fresh device
+check. The first release also requires three-device multi-room and packet-loss
+recovery tests, a complete seven-device game, and serial plus over-the-air
+privacy audits. See the [development roadmap](docs/ROADMAP.md) (Chinese) for the
+full acceptance gates.
 
 ## Current features
 
@@ -59,7 +67,14 @@ the full acceptance gates.
 - Good wins when every Werewolf is eliminated. Werewolves win when the number of living Werewolves is at least the number of all other living players.
 - Roles of eliminated players stay private until the game ends.
 
-The normative rules are in [docs/MVP_RULES.md](docs/MVP_RULES.md). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for protocol and security design, [docs/CONTROLS.md](docs/CONTROLS.md) for the three-button interaction model, and [docs/ROADMAP.md](docs/ROADMAP.md) for delivery stages.
+First-time players should read the [Player Guide](docs/PLAYER_GUIDE.en.md). The
+normative rules are in [docs/MVP_RULES.md](docs/MVP_RULES.md). See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for protocol and security design,
+[docs/CONTROLS.md](docs/CONTROLS.md) (Chinese) for the three-button interaction
+model, and [docs/ROADMAP.md](docs/ROADMAP.md) (Chinese) for delivery stages. The
+[hardware boundary and validation guide](docs/AI_HARDWARE_DEVELOPMENT_GUIDE.md)
+(Chinese) records board evidence, while the [simulator guide](simulator/README.md)
+defines production-UI rendering and privacy comparisons.
 
 ## Lobby and controls
 
@@ -69,8 +84,14 @@ The normative rules are in [docs/MVP_RULES.md](docs/MVP_RULES.md). See [docs/ARC
 - Badges: `H` marks the Host, `Y` marks the current Guest, and `G` marks another Guest. They are display metadata, not authentication.
 - Each Guest shows a six-digit read-only `VERIFY` code below `ROOM`. The Host sees the matching code in that Guest's detail page. Players compare the two displays in person; the code is never transmitted and has no machine-confirmation state.
 - Protocol/rules v5 starts only when all seven seats are occupied, seven profiles are echoed, all seven players are `READY`, and the Host has six encrypted Guest links.
-- A Guest holds `DOWN` to leave reliably. The Host holds `DOWN` to open the close-room warning; `BACK` is selected by default and short `OK` returns to the Lobby. Closing the room requires selecting `CLOSE ROOM` and holding `OK`.
-- Private pages reveal a role or Seer result only while `OK` is held and hide it immediately on release.
+- In an `ONLINE` Lobby, a Guest holds `DOWN` to leave reliably. During
+  `RECONNECTING`, input stays locked until recovery or bounded Host-loss
+  handling. The Host holds `DOWN` to open the close-room warning; `BACK` is
+  selected by default and short `OK` returns to the Lobby. Closing the room
+  requires selecting `CLOSE ROOM` and holding `OK`.
+- Private pages reveal a role or Seer result only while `OK` is held. Releasing
+  seals the screen without submitting; players may review again and then use a
+  separate short `OK` press to finish.
 - Target and vote pages use `UP/DOWN` to select, short `OK` to enter confirmation, and held `OK` to submit.
 
 Nicknames contain at most ten printable ASCII characters; extra characters are truncated. Duplicate nicknames remain distinguishable by seat number. Nicknames, seats, and `H/Y/G` badges do not authenticate physical identity.
@@ -78,7 +99,11 @@ Nicknames contain at most ten printable ASCII characters; extra characters are t
 ## Security and reliability
 
 - Only discovery and the pre-LMK commitment/reveal handshake use broadcast. Acceptance, readiness, roles, actions, votes, and results use encrypted ESP-NOW unicast.
-- Each pairing attempt receives fresh X25519 material and nonces. Transcript-bound HKDF derives a unique LMK for each Host-to-Guest link and a room-derived PMK.
+- Each pairing attempt receives fresh X25519 material and nonces.
+  Transcript-bound HKDF derives a unique secret LMK for each Host-to-Guest
+  link. This implementation also derives a common ESP-NOW PMK from public room
+  identity to avoid an SDK default or compiled constant; it does not claim that
+  PMK as a confidentiality or physical-identity credential.
 - `VERIFY` is derived locally from the existing transcript and key material. It is not sent in packets, persisted as a confirmation state, or used by `READY` and START gates.
 - The start gate fails closed unless all seats, profiles, readiness states, and encrypted links are complete.
 - Transport includes acknowledgements, bounded retries, a 32-packet replay window, idempotency keys, and encrypted heartbeat snapshots.
@@ -91,8 +116,8 @@ Nicknames contain at most ten printable ASCII characters; extra characters are t
 Target: ESP-IDF 5.5.3 on ESP32-C3.
 
 ```bash
-source ../esp-idf-v5.5.3/export.sh
-idf.py set-target esp32c3
+source /path/to/esp-idf-v5.5.3/export.sh  # Replace with the local install path
+idf.py set-target esp32c3                 # Fresh checkout or target change only
 idf.py build
 ```
 
@@ -111,7 +136,10 @@ WEREWOLF_UI_OUTPUT_DIR=/tmp/werewolf-ui-candidate \
     bash simulator/preview.sh
 ```
 
-The simulator verifies the complete public state set and privacy invariants. A simulator render is a candidate until the physical display is reviewed.
+The simulator currently renders 100 production UI states and verifies the
+privacy invariants. A candidate becomes a tracked `current-*` visual baseline
+only after visual review; that approval does not count as physical-panel
+validation.
 
 ## Project layout
 
@@ -130,9 +158,11 @@ main/werewolf_app.*             Host and Guest session controller
 main/werewolf_power.*           background CW2017 telemetry
 main/werewolf_sound.*           non-blocking ES8311 cue queue
 main/werewolf_ui.*              240 x 320 three-button LVGL interface
+main/werewolf_ui_text.*         public phase, link, battery, and VERIFY formatting
 components/bsp/                 display, buttons, audio, battery, and shared-I2C BSP
 simulator/                      deterministic renderer using production UI code
 tests/                          native Linux host tests
+docs/PLAYER_GUIDE*.md           beginner player guides in Chinese and English
 partitions.csv                  4 MiB-compatible 2 MiB factory layout without OTA
 ```
 
