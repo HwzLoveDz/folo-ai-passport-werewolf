@@ -83,13 +83,21 @@ automatically expire a phase; it waits for every required action.
 - In a joined client lobby, long `DOWN` immediately starts the reliable leave
   request; there is no second leave dialog. The link remains alive while the
   request drains to ACK or its bounded deadline.
-- Hold OK to reveal a private role; releasing OK hides it immediately.
+- Hold OK to reveal a private role or result; releasing OK hides it immediately
+  without acknowledging it. The player may repeat that hold/release cycle as
+  often as needed. After at least one valid reveal, a separate short OK submits
+  `ROLE_SEEN` or `ACK_RESULT`; the trailing click of a long press is never a
+  submission.
 - UP/DOWN changes a game target. Submitting that target requires an explicit
   hold to confirm; a click never commits a game action. Direct single-player
   kick remains the documented detail-menu exception above.
 - Private phases use identical brightness, animation, UI structure and sound
   policy for all roles. No role-specific sound, vibration or backlight pattern
   is permitted. Actual wall-clock duration depends on player input in this MVP.
+- Private reveal and completion eligibility are bound to the current page and
+  gate epoch. A page/epoch change, disconnect, or input disable seals the screen
+  and clears that local state fail-closed; a same-gate heartbeat does not cancel
+  a valid hold or the ability to review again.
 - Room discovery may use broadcast. Roles, teammates, targets, votes and Seer
   results must use encrypted unicast and must never appear in release logs.
 

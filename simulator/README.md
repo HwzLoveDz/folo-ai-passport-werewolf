@@ -47,12 +47,16 @@ It is rendered only for optional in-person comparison; READY remains the only
 per-player lobby state.
 
 The full preview also performs exact PNG comparisons proving that different
-secrets have an identical sealed frame, release restores that frame, and
-unmatched or stale long-press events stay sealed. The checks also prove that a
-routine UI heartbeat does not cancel a hold inside the same private gate epoch.
-Controller-queue reordering is also modeled: a confirmation remains current
-if a same-gate heartbeat is processed first, but is rejected after the private
-gate epoch changes.
+secrets have an identical initial sealed frame, release immediately clears the
+secret, and a completed hold/release cycle may be repeated before explicit
+completion. The released frame may advertise `REVIEW` and `DONE`, but it must
+remain sealed. A fresh short OK after at least one valid reveal emits the gate
+action; a click tail from the long press, an unmatched event, or a stale event
+does not. The checks also prove that a routine UI heartbeat does not cancel a
+hold or review eligibility inside the same private gate epoch. Controller-queue
+reordering is also modeled: a completion remains current if a same-gate
+heartbeat is processed first, but is rejected after the page or private gate
+epoch changes.
 
 These images are candidates, not an approved `current-*` baseline. Promote a
 baseline only after visual review on both the simulator and physical panel.

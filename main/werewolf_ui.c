@@ -111,6 +111,10 @@ static bool s_private_revealed;
 static bool s_private_press_armed;
 static werewolf_ui_page_t s_private_press_page;
 static uint32_t s_private_press_epoch;
+static bool s_private_viewed_once;
+static bool s_private_click_armed;
+static werewolf_ui_page_t s_private_click_page;
+static uint32_t s_private_click_epoch;
 static bool s_action_latched;
 static bool s_close_focus_close;
 static werewolf_ui_feedback_t s_feedback;
@@ -1466,11 +1470,15 @@ static void render_private(void)
     label_place(s_title, "PRIVATE", 10, 4, 182, 25,
                 &ui_font_kode_bold_21, WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
 
-    if (s_model.waiting_for_players) {
+    if (s_model.waiting_for_players || s_action_latched) {
         label_place(s_timer, "WAITING FOR PLAYERS", 0, 70, 202, 32,
                     &ui_font_kode_bold_15, WW_UI_FOCUS,
                     LV_TEXT_ALIGN_CENTER);
-        label_place(s_detail, "RESULT CONFIRMED", 12, 119, 178, 32,
+        label_place(s_detail,
+                    s_model.page == WEREWOLF_UI_PAGE_ROLE
+                        ? "ROLE CONFIRMED"
+                        : "RESULT CONFIRMED",
+                    12, 119, 178, 32,
                     &ui_font_kode_regular_13, WW_UI_TEXT,
                     LV_TEXT_ALIGN_CENTER);
         footer_set("WAIT FOR ALL PLAYERS", WW_UI_TEXT);
@@ -1480,15 +1488,21 @@ static void render_private(void)
     if (!s_private_revealed) {
         label_place(s_timer, "PRIVATE SEALED", 0, 76, 202, 28,
                     &ui_font_kode_bold_21, WW_UI_FOCUS, LV_TEXT_ALIGN_CENTER);
-        label_place(s_detail, "Keep the screen facing you.\nRelease OK to hide.",
+        label_place(s_detail,
+                    s_private_viewed_once
+                        ? "Private view sealed.\nHold again if needed."
+                        : "Keep the screen facing you.\nRelease OK to hide.",
                     12, 119, 178, 52, &ui_font_kode_regular_13,
                     WW_UI_TEXT, LV_TEXT_ALIGN_CENTER);
-        footer_set("PRESS + HOLD OK TO REVEAL", WW_UI_TEXT);
+        footer_set(s_private_viewed_once
+                       ? "HOLD OK REVIEW  |  OK DONE"
+                       : "PRESS + HOLD OK TO REVEAL",
+                   WW_UI_TEXT);
         return;
     }
 
     if (s_model.page == WEREWOLF_UI_PAGE_ROLE) {
-        snprintf(line, sizeof(line), "YOU ARE %s", role_name(s_model.local_role));
+        snprintf(line, sizeof(line), "%s", role_name(s_model.local_role));
         label_place(s_detail,
                     text_or(s_model.private_detail, "Your role is private."),
                     10, 104, 182, 68, &ui_font_kode_regular_13,
@@ -1871,6 +1885,10 @@ bool werewolf_ui_create(const werewolf_ui_model_t *initial_model)
     s_private_press_armed = false;
     s_private_press_page = WEREWOLF_UI_PAGE_MODE;
     s_private_press_epoch = 0U;
+    s_private_viewed_once = false;
+    s_private_click_armed = false;
+    s_private_click_page = WEREWOLF_UI_PAGE_MODE;
+    s_private_click_epoch = 0U;
     s_action_latched = false;
     s_close_focus_close = false;
     s_feedback = WEREWOLF_UI_FEEDBACK_NONE;
@@ -2041,12 +2059,18 @@ void werewolf_ui_set_model(const werewolf_ui_model_t *model)
         s_private_revealed = false;
         s_private_press_armed = false;
         s_private_press_epoch = 0U;
+        s_private_viewed_once = false;
+        s_private_click_armed = false;
+        s_private_click_epoch = 0U;
     }
     if (s_model.connection != WEREWOLF_UI_CONNECTION_ONLINE ||
         !s_model.input_enabled) {
         s_private_revealed = false;
         s_private_press_armed = false;
         s_private_press_epoch = 0U;
+        s_private_viewed_once = false;
+        s_private_click_armed = false;
+        s_private_click_epoch = 0U;
         s_confirm_pending = false;
     }
     normalize_target_cursor(page_changed);
@@ -2093,11 +2117,14 @@ static bool handle_private_key(werewolf_ui_key_t key,
                                werewolf_ui_key_event_t event,
                                werewolf_ui_action_t *action)
 {
-    if (!s_model.input_enabled) {
+    if (!s_model.input_enabled || s_model.waiting_for_players ||
+        s_action_latched) {
         bool needs_render = s_private_revealed;
         s_private_revealed = false;
         s_private_press_armed = false;
         s_private_press_epoch = 0U;
+        s_private_click_armed = false;
+        s_private_click_epoch = 0U;
         if (needs_render) {
             render();
             if (s_model.page == WEREWOLF_UI_PAGE_ROLE) {
@@ -2114,6 +2141,8 @@ static bool handle_private_key(werewolf_ui_key_t key,
         s_private_press_armed = true;
         s_private_press_page = s_model.page;
         s_private_press_epoch = s_model.private_epoch;
+        s_private_click_armed = false;
+        s_private_click_epoch = 0U;
         return false;
     }
 
@@ -2122,6 +2151,11 @@ static bool handle_private_key(werewolf_ui_key_t key,
             s_private_press_page == s_model.page &&
             s_private_press_epoch == s_model.private_epoch) {
             s_private_revealed = true;
+            s_private_viewed_once = true;
+            /* A long press may be followed by a platform CLICK event.  Only
+             * a new short press may confirm the private gate. */
+            s_private_click_armed = false;
+            s_private_click_epoch = 0U;
             render();
             if (s_model.page == WEREWOLF_UI_PAGE_ROLE) {
                 s_feedback = WEREWOLF_UI_FEEDBACK_PRIVATE_REVEAL;
@@ -2131,22 +2165,45 @@ static bool handle_private_key(werewolf_ui_key_t key,
     }
 
     if (event == WEREWOLF_UI_KEY_EVENT_RELEASE) {
+        bool press_matches = s_private_press_armed &&
+                             s_private_press_page == s_model.page &&
+                             s_private_press_epoch == s_model.private_epoch;
         bool was_revealed = s_private_revealed;
         s_private_revealed = false;
         s_private_press_armed = false;
         s_private_press_epoch = 0U;
+        if (press_matches && !was_revealed) {
+            s_private_click_armed = true;
+            s_private_click_page = s_model.page;
+            s_private_click_epoch = s_model.private_epoch;
+        } else {
+            s_private_click_armed = false;
+            s_private_click_epoch = 0U;
+        }
         if (was_revealed) {
-            /* render_reset() clears secret strings before the release action
-             * can leave this module. */
+            /* render_reset() clears secret strings on the physical release
+             * edge. Releasing never acknowledges the gate, so the same
+             * private material may be reviewed again. */
             render();
             if (s_model.page == WEREWOLF_UI_PAGE_ROLE) {
                 s_feedback = WEREWOLF_UI_FEEDBACK_PRIVATE_SEAL;
             }
         }
-        if (!was_revealed || s_action_latched) {
+        return false;
+    }
+
+    if (event == WEREWOLF_UI_KEY_EVENT_CLICK) {
+        bool click_matches = s_private_click_armed &&
+                             s_private_click_page == s_model.page &&
+                             s_private_click_epoch == s_model.private_epoch;
+        s_private_click_armed = false;
+        s_private_click_epoch = 0U;
+        if (!click_matches || !s_private_viewed_once) {
             return false;
         }
         s_action_latched = true;
+        render();
+        s_feedback = WEREWOLF_UI_FEEDBACK_CONFIRMED;
         return emit_action(action,
                            s_model.page == WEREWOLF_UI_PAGE_ROLE ?
                            WEREWOLF_UI_ACTION_ROLE_SEEN :
@@ -2623,6 +2680,8 @@ void werewolf_ui_hide_private(void)
     s_private_revealed = false;
     s_private_press_armed = false;
     s_private_press_epoch = 0U;
+    s_private_click_armed = false;
+    s_private_click_epoch = 0U;
     if (needs_render) {
         render();
     }
@@ -2640,6 +2699,8 @@ void werewolf_ui_cancel_pending_action(void)
     s_private_revealed = false;
     s_private_press_armed = false;
     s_private_press_epoch = 0U;
+    s_private_click_armed = false;
+    s_private_click_epoch = 0U;
     render();
 }
 
@@ -2692,6 +2753,10 @@ void werewolf_ui_destroy(void)
     s_private_press_armed = false;
     s_private_press_page = WEREWOLF_UI_PAGE_MODE;
     s_private_press_epoch = 0U;
+    s_private_viewed_once = false;
+    s_private_click_armed = false;
+    s_private_click_page = WEREWOLF_UI_PAGE_MODE;
+    s_private_click_epoch = 0U;
     s_action_latched = false;
     s_close_focus_close = false;
     s_player_action_focus_kick = false;

@@ -234,8 +234,9 @@ void werewolf_ui_model_init(werewolf_ui_model_t *model);
  * - create() builds and loads the 240 x 320 screen.
  * - handle_key() never calls game/network code. It returns a value action for
  *   the caller to enqueue after bsp_lvgl_unlock().
- * - map the physical OK press-up edge to KEY_EVENT_RELEASE. That edge is what
- *   immediately hides private information. */
+ * - map the physical OK press-up edge to KEY_EVENT_RELEASE. That edge
+ *   immediately hides private information but does not acknowledge it; after
+ *   a valid reveal, a new short OK press emits the private confirmation. */
 bool werewolf_ui_create(const werewolf_ui_model_t *initial_model);
 void werewolf_ui_set_model(const werewolf_ui_model_t *model);
 bool werewolf_ui_handle_key(werewolf_ui_key_t key,
